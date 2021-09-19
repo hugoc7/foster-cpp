@@ -4,6 +4,42 @@
 #include "Collisions.h"
 #include "Geometry.h"
 #include <iostream>
+#include "ECS.h"
+
+struct Velocity {
+    int speed{};
+};
+struct Transform {
+    Transform(int poss) : pos{ poss } {};
+    int pos{};
+};
+struct Collider {
+    int w{};
+};
+
+void testECS(){
+    
+    ECS ecs{};
+    ecs.registerComponent<Transform>();
+    ecs.registerComponent<Collider>();
+    ecs.registerComponent<Velocity>();
+    EntityID hugo = ecs.addEntity();
+    ecs.addComponent<Transform>(hugo, 42);
+    ecs.addComponent<Velocity>(hugo);
+    ecs.addComponent<Collider>(hugo);
+    EntityID mina = ecs.addEntity();
+    ecs.addComponent<Transform>(mina, 35);
+    ecs.addComponent<Collider>(mina);
+    EntityID valou = ecs.addEntity();
+    ecs.addComponent<Transform>(valou, 24);
+    ecs.addComponent<Velocity>(valou);
+    EntityID alex = ecs.addEntity();
+    ecs.addComponent<Collider>(alex);
+    ecs.addComponent<Velocity>(alex);
+    ecs.removeComponent<Transform>(hugo);
+    ecs.removeEntity(valou);
+    std::cout << "mina" << ecs.getComponent<Velocity>(hugo).speed << std::endl;
+}
 
 void testGeometry() {
     Matrix2 m{ 2.0, 1.0, 1.0, 1.0 };
@@ -43,6 +79,7 @@ int main(int argc, char* args[])
     SDL_FreeSurface(bitmapSurface);
     testCollisions();
     testGeometry();
+    testECS();
 
     while (1) {
         SDL_Event e;
