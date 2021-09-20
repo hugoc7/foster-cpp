@@ -33,6 +33,24 @@ void detectStaticCollisions(std::vector<MovingObject>& movingObjects, std::vecto
 float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vector2 (&const staticSegment)[2], Vector2 const& move) {
 	float cutsDetected[4]{ -1, -1, -1, -1 };//negative value = no cut
 	float distanceToCollision = -1;
+
+
+	//important: verifier si le segment est colineaire avec la vitesse, dans ce cas, on a pas de parallelogramme
+	//RMQ: Ce cas a ete ajoute apres coup et n'a pas forcement ete optimise
+	if (determinant(movingSegment[0] - movingSegment[1], move) == 0) {
+		cutsDetected[0] = collisionSegmentSegment(movingSegment[0], movingSegment[0] + move, staticSegment[0], staticSegment[1]);
+		cutsDetected[1] = collisionSegmentSegment(movingSegment[1], movingSegment[1] + move, staticSegment[0], staticSegment[1]);
+		if (cutsDetected[0] >= 0)
+			distanceToCollision = cutsDetected[1] >= 0 ? std::min(cutsDetected[0], cutsDetected[1]) : cutsDetected[0];
+		else if (cutsDetected[1] >= 0)
+			distanceToCollision = cutsDetected[1];
+		else
+			distanceToCollision = 1.0f;
+		return distanceToCollision;
+	}
+
+
+	
 	//0 : segment à sa position orgine
 	//1 : segment à sa position d'arrivee
 	//2 : segment de trajectoire partant du point 0
@@ -90,13 +108,16 @@ float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vec
 void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movingCollider,
 	VisibleObject const& staticObject, BoxCollider const& staticCollider, int deltaTime) {
 
+	//if speed is 0 then stop
+	if (equals(movingObject.newSpeed.x, 0) && equals(movingObject.newSpeed.y, 0)) return;
+
 	float moveReductionFactor{ 1 };//factor which reduces the move to avoid collision
 
 	Vector2 movingColliderPoints[4]{
-		{movingObject.position.x - movingCollider.w / 2.0, movingObject.position.y - movingCollider.h / 2.0},
-		{movingObject.position.x - movingCollider.w / 2.0, movingObject.position.y + movingCollider.h / 2.0},
-		{movingObject.position.x + movingCollider.w / 2.0, movingObject.position.y - movingCollider.h / 2.0},
-		{movingObject.position.x + movingCollider.w / 2.0, movingObject.position.y + movingCollider.h / 2.0},
+		{movingObject.position.x - movingCollider.w / 2.0f, movingObject.position.y - movingCollider.h / 2.0f},
+		{movingObject.position.x - movingCollider.w / 2.0f, movingObject.position.y + movingCollider.h / 2.0f},
+		{movingObject.position.x + movingCollider.w / 2.0f, movingObject.position.y - movingCollider.h / 2.0f},
+		{movingObject.position.x + movingCollider.w / 2.0f, movingObject.position.y + movingCollider.h / 2.0f},
 	};
 	Vector2 movingSegments[4][2] {
 		{movingColliderPoints[0], movingColliderPoints[1]},
@@ -105,10 +126,10 @@ void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movin
 		{movingColliderPoints[2], movingColliderPoints[0]},
 	};
 	Vector2 staticColliderPoints[4]{
-		{staticObject.position.x - staticCollider.w / 2.0, staticObject.position.y - staticCollider.h / 2.0},
-		{staticObject.position.x - staticCollider.w / 2.0, staticObject.position.y + staticCollider.h / 2.0},
-		{staticObject.position.x + staticCollider.w / 2.0, staticObject.position.y - staticCollider.h / 2.0},
-		{staticObject.position.x + staticCollider.w / 2.0, staticObject.position.y + staticCollider.h / 2.0},
+		{staticObject.position.x - staticCollider.w / 2.0f, staticObject.position.y - staticCollider.h / 2.0f},
+		{staticObject.position.x - staticCollider.w / 2.0f, staticObject.position.y + staticCollider.h / 2.0f},
+		{staticObject.position.x + staticCollider.w / 2.0f, staticObject.position.y - staticCollider.h / 2.0f},
+		{staticObject.position.x + staticCollider.w / 2.0f, staticObject.position.y + staticCollider.h / 2.0f},
 	};
 	Vector2 staticSegments[4][2]{
 		{staticColliderPoints[0], staticColliderPoints[1]},
@@ -119,7 +140,7 @@ void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movin
 	Vector2 deltaMove{ deltaTime * movingObject.newSpeed };
 	//il faudra optimiser en utilisant le constructeur par déplacement ... std::move (en fait pas forcément besoin ...)
 	float distancesToCollisions[4][4]{};
-	for (int staticSegmentIndice = 0; staticSegmentIndice < 4; staticSegmentIndice) {
+	for (int staticSegmentIndice = 0; staticSegmentIndice < 4; ++staticSegmentIndice) {
 		for (int i = 0; i < 4; i++) {
 			float newMoveReductionFactor{ collisionMovingSegmentWithSegment(movingSegments[i], staticSegments[staticSegmentIndice], deltaMove) };
 			if (newMoveReductionFactor < moveReductionFactor)

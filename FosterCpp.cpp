@@ -5,6 +5,7 @@
 #include "Geometry.h"
 #include <iostream>
 #include "ECS.h"
+#include "Game.h"
 
 struct Velocity {
     int speed{};
@@ -58,54 +59,27 @@ void testCollisions() {
     std::cout << "Collision seg seg a la mano: " << param.x << " " << param.y << std::endl;
 }
 
+struct A {
+    int x;
+};
+struct B {
+    int x;
+    void f() {
+        std::cout << "hello" << std::endl;
+    }
+};
+
 int main(int argc, char* args[])
 {
-    SDL_Window* win = NULL;
-    SDL_Renderer* renderer = NULL;
-    SDL_Texture* bitmapTex = NULL;
-    SDL_Surface* bitmapSurface = NULL;
-    int posX = 100, posY = 100, width = 320, height = 240;
-
-    int lastTime{ 0 }, refreshTimeInterval{ 20 }, currentTime{ 0 };
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    win = SDL_CreateWindow("Hello World", posX, posY, width, height, SDL_WINDOW_RESIZABLE);
-
-    renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-
-    bitmapSurface = SDL_LoadBMP("img/hello.bmp");
-    bitmapTex = SDL_CreateTextureFromSurface(renderer, bitmapSurface);
-    SDL_FreeSurface(bitmapSurface);
-    testCollisions();
+   /* testCollisions();
     testGeometry();
-    testECS();
+    testECS();*/
 
-    while (1) {
-        SDL_Event e;
-        if (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                break;
-            }
-        }
-
-        //refresh screen
-        currentTime = SDL_GetTicks();
-        if (currentTime - lastTime >= refreshTimeInterval) {
-            lastTime = currentTime;
-
-            SDL_RenderClear(renderer);
-            SDL_Rect position{ 0, 0, 100, 100 };
-            SDL_RenderCopy(renderer, bitmapTex, NULL, &position);
-            SDL_RenderPresent(renderer);
-        }
-
-        
-    }
-
-    SDL_DestroyTexture(bitmapTex);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(win);
+    Game game{};
+    game.gameLoop();
 
     SDL_Quit();
 

@@ -7,6 +7,8 @@
 struct BoxCollider {
 	int w;
 	int h;
+	BoxCollider() = default;
+	BoxCollider(int w, int h) : w{ w }, h{ h } {};
 };
 
 
@@ -16,13 +18,18 @@ struct CollisionDetector {
 };
 
 
-typedef struct {
+struct VisibleObject {
 	Vector2 position;
-} VisibleObject;
+	Vector2 oldPosition;
+	VisibleObject() = default;
+	VisibleObject(float x, float y) : position{ x, y }, oldPosition{ x,y } {};
+};
 
 struct MovingObject : public VisibleObject {
-	Vector2 speed;
-	Vector2 newSpeed;
+	Vector2 speed{};
+	Vector2 newSpeed{};
+	MovingObject() = default;
+	MovingObject(float x, float y) : VisibleObject(x, y) {};
 };
 
 #define BOX_COLLIDER 0

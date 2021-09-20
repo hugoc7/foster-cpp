@@ -3,6 +3,8 @@
 struct Vector2 {
 	float x;
 	float y;
+	Vector2() = default;
+	Vector2(float X, float Y) : x{ X }, y{ Y } {};
 
 	Vector2& operator+=(const Vector2& v) {
 		x += v.x;
