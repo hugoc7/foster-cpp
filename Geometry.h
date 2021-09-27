@@ -1,4 +1,5 @@
 #pragma once
+#include <ostream>
 
 struct Vector2 {
 	float x;
@@ -10,6 +11,17 @@ struct Vector2 {
 		x += v.x;
 		y += v.y;
 		return *this;
+	};
+	Vector2& operator*=(const float& s) {
+		x *= s;
+		y *= s;
+		return *this;
+	};
+
+	friend std::ostream& operator<<(std::ostream& os, const Vector2& v)
+	{
+		os << "(" << v.x << "; " << v.y << ")";
+		return os;
 	};
 };
 
@@ -40,3 +52,5 @@ Vector2 operator-(Vector2 const& u, Vector2 const& v);
 Vector2 operator+(Vector2 const& u, Vector2 const& v);
 Vector2 operator*(Matrix2 const& m, Vector2 const& v);
 Vector2 operator*(float s, Vector2 const& v);
+
+float norme(Vector2 v);

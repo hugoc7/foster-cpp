@@ -47,3 +47,7 @@ Matrix2 inverse(Matrix2 m, float determinant) {
 	Matrix2 inv{ m.d, -1.0f * m.b, -1.0f * m.c, m.a };
 	return dot(inv, 1.0f / determinant);
 }
+
+float norme(Vector2 v) {
+	return std::sqrt(dot(v, v));
+}

@@ -1,6 +1,7 @@
 #include "Components.h"
 #include <vector>
 #include "Move.h"
+#include <iostream>
 
 
 void applyMovement(std::vector<MovingObject>& objects, float deltaTime) {
@@ -11,11 +12,13 @@ void applyMovement(std::vector<MovingObject>& objects, float deltaTime) {
 
 //also applies gravity
 void applyMovement(MovingObject& object, float deltaTime) {
-	static const float gravity = 3.0f;
+	static const float gravity = 4.0f;
 
 	object.speed = object.newSpeed;
 	object.oldPosition = object.position;
 	//object.speed.y -= gravity * deltaTime;
 	object.position += deltaTime * object.speed;
 	object.newSpeed = object.speed;
+	//std::cout << object.oldPosition.x - object.position.x << " ; " << object.oldPosition.x - object.position.x << "\n";
+
 }

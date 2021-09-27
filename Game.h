@@ -16,14 +16,14 @@
 class Game {
 private:
 	int lastTime{ 0 }, currentTime{ 0 };
-	const float FPS = 80.0;
+	const float FPS{ 15.0 };
 	float deltaTime{}, refreshTimeInterval{ 1.0f / FPS};
 	std::vector<VisibleObject> plateforms{};
 	std::vector<BoxCollider> plateformColliders{};
 	std::vector<MovingObject> players{};
 	std::vector<BoxCollider> playersColliders{};
 	Renderer renderingManager{};
-	Vector2 playerMaxSpeed{ 4.0f, 4.0f };
+	Vector2 playerMaxSpeed{ 4.0f, 4.0f};
 
 
 public:
@@ -36,6 +36,16 @@ public:
 
 		plateforms.emplace_back(9.5f, 5.5f);
 		plateformColliders.emplace_back(3.0f, 1.0f);
+
+
+		/*Vector2 OP[2]{Vector2(4.264,4.144),Vector2(4.264,6.144) };
+		Vector2 AB[2]{ Vector2(2,4),Vector2(7,4) };
+		std::cout << OP[0] << OP[1] << " => " << AB[0] << AB[1];
+		float kaka{ collisionMovingSegmentWithSegment(movingSegments[i], staticSegments[staticSegmentIndice], deltaMove) };
+		std::cout << " => " << kaka << "\n";
+		collisionMovingSegmentWithSegment(Vector2(& const movingSegment)[2], Vector2(& const staticSegment)[2], Vector2 const& move)*/
+
+
 	}
 
 	void gameLoop() {
@@ -65,11 +75,32 @@ public:
 		SDL_Event e;
 		SDL_PollEvent(&e);
 
+
+		const Uint8* state = SDL_GetKeyboardState(NULL);
+		SDL_PumpEvents();
+		if (state[SDL_SCANCODE_UP]) {
+			player.newSpeed.y = playerMaxSpeed.y;
+		}
+		else if (state[SDL_SCANCODE_DOWN]) {
+			player.newSpeed.y = -1.0f * playerMaxSpeed.y;
+		}
+		else {
+			player.newSpeed.y = 0;
+		}
+		if (state[SDL_SCANCODE_RIGHT]) {
+			player.newSpeed.x = playerMaxSpeed.x;
+		}
+		else if (state[SDL_SCANCODE_LEFT]) {
+			player.newSpeed.x = -1.0f * playerMaxSpeed.x;
+		}
+		else {
+			player.newSpeed.x = 0;
+		}
 		switch (e.type) {
 			case SDL_QUIT:
 			quit = true;
 			break;
-			case SDL_KEYDOWN:
+			/*case SDL_KEYDOWN:
 				if (e.key.repeat) break;
 				switch (e.key.keysym.sym) {
 				case SDLK_UP:
@@ -85,7 +116,7 @@ public:
 					player.newSpeed.x = -1.0f * playerMaxSpeed.x;
 					break;
 				}
-				std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
+				//std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
 				break;
 			case SDL_KEYUP:
 				if (e.key.repeat) break;
@@ -103,8 +134,8 @@ public:
 					player.newSpeed.x = 0;
 					break;
 				}
-				std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
-				break;
+				//std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
+				break;*/
 			case SDL_WINDOWEVENT:
 				//renderer.getNewWindowSize();
 				break;
