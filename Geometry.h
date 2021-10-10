@@ -54,3 +54,4 @@ Vector2 operator*(Matrix2 const& m, Vector2 const& v);
 Vector2 operator*(float s, Vector2 const& v);
 
 float norme(Vector2 v);
+Vector2 normalVector(Vector2 v);

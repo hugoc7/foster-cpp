@@ -55,7 +55,12 @@ public:
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, players[0]);
+				players[0].move = deltaTime * players[0].newSpeed;
+
+				//sliding must be checked before collisions !
+				detectStaticSliding(players, playersColliders, plateforms, plateformColliders, deltaTime);
 				detectStaticCollisions(players, playersColliders, plateforms, plateformColliders, deltaTime);
+
 				applyMovement(players, deltaTime);//also apply gravity
 				renderingManager.render(players, playersColliders, plateforms, plateformColliders);
 			}
@@ -77,7 +82,7 @@ public:
 
 
 		const Uint8* state = SDL_GetKeyboardState(NULL);
-		SDL_PumpEvents();
+		//SDL_PumpEvents();
 		if (state[SDL_SCANCODE_UP]) {
 			player.newSpeed.y = playerMaxSpeed.y;
 		}
@@ -96,6 +101,7 @@ public:
 		else {
 			player.newSpeed.x = 0;
 		}
+		//std::cout << "\ncontrol speed: " << player.newSpeed;
 		switch (e.type) {
 			case SDL_QUIT:
 			quit = true;

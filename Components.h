@@ -28,6 +28,7 @@ struct VisibleObject {
 struct MovingObject : public VisibleObject {
 	Vector2 speed{};
 	Vector2 newSpeed{};
+	Vector2 move{0,0};
 	MovingObject() = default;
 	MovingObject(float x, float y) : VisibleObject(x, y) {};
 };

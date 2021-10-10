@@ -51,3 +51,6 @@ Matrix2 inverse(Matrix2 m, float determinant) {
 float norme(Vector2 v) {
 	return std::sqrt(dot(v, v));
 }
+Vector2 normalVector(Vector2 v) {
+	return Vector2(-1.0f * v.y, v.x);
+}

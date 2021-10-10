@@ -17,7 +17,8 @@ void applyMovement(MovingObject& object, float deltaTime) {
 	object.speed = object.newSpeed;
 	object.oldPosition = object.position;
 	//object.speed.y -= gravity * deltaTime;
-	object.position += deltaTime * object.speed;
+
+	object.position += object.move;//deltaTime * object.speed;
 	object.newSpeed = object.speed;
 	//std::cout << object.oldPosition.x - object.position.x << " ; " << object.oldPosition.x - object.position.x << "\n";
 
