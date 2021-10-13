@@ -18,28 +18,28 @@ _ on peut partitionner l'espace en zones pour éviter de tester toutes les platef
 */
 
 
-void detectStaticCollisions(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders) {
+void detectStaticCollisions(ArrayList<EntityID> const& movingObjects, ArrayList<EntityID> const& staticObjects) {
 	
 	//for each moving object
-	for (int i = 0; i < movingObjects.size(); i++) {
+	for (int i = 0; i < movingObjects.v.size(); i++) {
 
 		//for each static object (plateform)
-		for (int j = 0; j < staticObjects.size(); j++) {
-			detectStaticCollisions(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j]);
+		for (int j = 0; j < staticObjects.v.size(); j++) {
+			detectStaticCollisions(ecs.getComponent<MovingObject>(movingObjects.v[i]), ecs.getComponent<BoxCollider>(movingObjects.v[i]), 
+				ecs.getComponent<VisibleObject>(staticObjects.v[j]), ecs.getComponent<BoxCollider>(staticObjects.v[j]));
 		}
 	}
 }
 
-void detectStaticSliding(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders) {
+void detectStaticSliding(ArrayList<EntityID> const& movingObjects, ArrayList<EntityID> const& staticObjects) {
 
 	//for each moving object
-	for (int i = 0; i < movingObjects.size(); i++) {
+	for (int i = 0; i < movingObjects.v.size(); i++) {
 
 		//for each static object (plateform)
-		for (int j = 0; j < staticObjects.size(); j++) {
-			detectStaticSliding(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j]);
+		for (int j = 0; j < staticObjects.v.size(); j++) {
+			detectStaticSliding(ecs.getComponent<MovingObject>(movingObjects.v[i]), ecs.getComponent<BoxCollider>(movingObjects.v[i]),
+				ecs.getComponent<VisibleObject>(staticObjects.v[j]), ecs.getComponent<BoxCollider>(staticObjects.v[j]));
 		}
 	}
 }

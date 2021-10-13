@@ -11,7 +11,6 @@ struct BoxCollider {
 	BoxCollider(int w, int h) : w{ w }, h{ h } {};
 };
 
-
 struct CollisionDetector {
 	int collisionEntity; //l'entite avec laquelle on a une collision
 	Vector2 moveToCollision; //vecteur qui va juska la collision
@@ -31,16 +30,4 @@ struct MovingObject : public VisibleObject {
 	Vector2 move{0,0};
 	MovingObject() = default;
 	MovingObject(float x, float y) : VisibleObject(x, y) {};
-};
-
-#define BOX_COLLIDER 0
-#define VISIBLE_OBJECT 1
-#define MOVING_OBJECT 2
-#define MAX_COMPONENTS 3
-
-class ComponentsManager {
-public:
-	std::vector<BoxCollider> boxColliders{};
-	std::vector<VisibleObject> visibleObjects{};
-	std::vector<MovingObject> movingObjects{};
 };

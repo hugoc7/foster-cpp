@@ -84,8 +84,7 @@ public:
         SDL_DestroyWindow(win);
 
     }
-	void render(std::vector<MovingObject> const& players, std::vector<BoxCollider> const& playersColliders,
-        std::vector<VisibleObject> const& plateforms, std::vector<BoxCollider> const& plateformColliders)
+	void render(ArrayList<EntityID> const& players, ArrayList<EntityID> const& plateforms)
     {
         SDL_RenderClear(renderer);
         SDL_Rect position{};
@@ -98,61 +97,37 @@ public:
         static SDL_Rect oldPosition{0, 0, 0, 0};
 
 
-        for (int i = 0; i < plateforms.size(); i++) {
-            //position_world.x = plateforms[i].oldPosition.x - float(plateformColliders[i].w) / 2.0f;
-            //position_world.y = plateforms[i].oldPosition.y - float(plateformColliders[i].h) / 2.0f;
-            position_world.w = plateformColliders[i].w;
-            position_world.h = plateformColliders[i].h;
-           // position = worldToScreenCoords(position_world, camera, window_w, window_h);
+        for (int i = 0; i < plateforms.v.size(); i++) {
 
-           // SDL_RenderFillRect(renderer, &position);
+            BoxCollider& plateformCollider = ecs.getComponent<BoxCollider>(plateforms.v[i]);
+            VisibleObject& plateform = ecs.getComponent<VisibleObject>(plateforms.v[i]);
 
 
-            position_world.x = plateforms[i].position.x - float(plateformColliders[i].w) / 2.0f;
-            position_world.y = plateforms[i].position.y + float(plateformColliders[i].h) / 2.0f;
+            position_world.w = plateformCollider.w;
+            position_world.h = plateformCollider.h;
+            position_world.x = plateform.position.x - float(plateformCollider.w) / 2.0f;
+            position_world.y = plateform.position.y + float(plateformCollider.h) / 2.0f;
             position = worldToScreenCoords(position_world, camera, window_w, window_h);
             
             SDL_RenderCopy(renderer, textures[WALL_TEX], NULL, &position);
         }
 
-        for (int i = 0; i < players.size(); i++) {
-            //lissage de trajectoire
+        for (int i = 0; i < players.v.size(); i++) {
+            BoxCollider& playerCollider = ecs.getComponent<BoxCollider>(players.v[i]);
+            MovingObject& player = ecs.getComponent<MovingObject>(players.v[i]);
 
+            position_world.w = playerCollider.w;
+            position_world.h = playerCollider.h;
+         
 
-           // position_world.x = players[i].oldPosition.x - float(playersColliders[i].w) / 2.0f;
-         //   position_world.y = players[i].oldPosition.y - float(playersColliders[i].h) / 2.0f;
-            position_world.w = playersColliders[i].w;
-            position_world.h = playersColliders[i].h;
-            //position = worldToScreenCoords(position_world, camera, window_w, window_h);
-           // SDL_RenderFillRect(renderer, &position);
-
-            position_world.x = players[i].position.x - float(playersColliders[i].w) / 2.0f;
-            position_world.y = players[i].position.y + float(playersColliders[i].h) / 2.0f;
+            position_world.x = player.position.x - float(playerCollider.w) / 2.0f;
+            position_world.y = player.position.y + float(playerCollider.h) / 2.0f;
             position = worldToScreenCoords(position_world, camera, window_w, window_h);
 
-            //position_world.x = players[i].oldPosition.x - float(playersColliders[i].w) / 2.0f;
-            //position_world.y = players[i].oldPosition.y - float(playersColliders[i].h) / 2.0f;
-            //oldPosii = worldToScreenCoords(position_world, camera, window_w, window_h);
             SDL_Rect newMove{ position.x - oldPosition.x , position.y - oldPosition.y , 0, 0 };
 
-            //std::cout << "old pos Dx=" << oldPosition.x << "; Dy=" << oldPosition.y << "\n";
 
             SDL_Rect newPosWithOldMove{oldPosition.x + lastMove.x, oldPosition.y + lastMove.y, 0, 0 };
-
-           /* if ((newMove.x != lastMove.x || newMove.y != lastMove.y) && quadraticDistance(position, newPosWithOldMove) <= maxDistanceFromRealPos) {
-                position.x = newPosWithOldMove.x;
-                position.y = newPosWithOldMove.y;
-                //lastMove.x = newPosWithOldMove.x - oldPosition.x;
-                //lastMove.y = newPosWithOldMove.y - oldPosition.y;
-
-            }
-            else
-            {
-                lastMove.x = newMove.x;
-                lastMove.y = newMove.y;
-            }*/
-            //std::cout << "LAST MOVE: " << lastMove.x  << "; Dy=" << lastMove.y << "\n";
-           // std::cout << "WTF Dx=" << oldPosition.x << "; Dy=" << oldPosition.y << "\n";
 
             oldPosition.x = position.x;
             oldPosition.y = position.y;

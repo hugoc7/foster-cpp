@@ -15,20 +15,27 @@ private:
 	int lastTime{ 0 }, currentTime{ 0 };
 	const float FPS{ 60.0 };
 	float deltaTime{}, refreshTimeInterval{ 1.0f / FPS};
-	std::vector<VisibleObject> plateforms{};
+	ArrayList<EntityID> plateforms{};
+	ArrayList<EntityID> players{};
+	/*std::vector<VisibleObject> plateforms{};
 	std::vector<BoxCollider> plateformColliders{};
 	std::vector<MovingObject> players{};
-	std::vector<BoxCollider> playersColliders{};
+	std::vector<BoxCollider> playersColliders{};*/
 	Renderer renderingManager{};
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
+	EntityID player;
 
 
 public:
 	Game() {
-		players.emplace_back(4.5, 7);
-		playersColliders.emplace_back(1, 2);
+		player = ecs.addEntity();
+		ecs.addComponent<MovingObject>(player, 4.5, 7);
+		ecs.addComponent<BoxCollider>(player, 1, 2);
+		players.insert(player);
+		//players.emplace_back(4.5, 7);
+		//playersColliders.emplace_back(1, 2);
 
-		readPlateformsFromFile("map.txt", plateforms, plateformColliders);
+		readPlateformsFromFile("map.txt", plateforms);
 		/*plateforms.emplace_back(4.5f, 3.5f);
 		plateformColliders.emplace_back(5.0f, 1.0f);
 
@@ -36,23 +43,19 @@ public:
 		plateformColliders.emplace_back(3.0f, 1.0f);*/
 
 
-		/*Vector2 OP[2]{Vector2(4.264,4.144),Vector2(4.264,6.144) };
-		Vector2 AB[2]{ Vector2(2,4),Vector2(7,4) };
-		std::cout << OP[0] << OP[1] << " => " << AB[0] << AB[1];
-		float kaka{ collisionMovingSegmentWithSegment(movingSegments[i], staticSegments[staticSegmentIndice], deltaMove) };
-		std::cout << " => " << kaka << "\n";
-		collisionMovingSegmentWithSegment(Vector2(& const movingSegment)[2], Vector2(& const staticSegment)[2], Vector2 const& move)*/
-
-
 	}
-	void readPlateformsFromFile(std::string const& filename, std::vector<VisibleObject>& plateforms, std::vector<BoxCollider>& plateformColliders) {
+	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
 		std::ifstream file(filename);
 		float x, y, w, h;
 		while (!file.eof() && file.good()) {
 			file >> x >> y >> w >> h;
 			std::cout << x << ", " << y << "  ;  " << w << ", " << h << std::endl;
-			plateforms.emplace_back(x, y);
-			plateformColliders.emplace_back(w, h);
+			EntityID plateform = ecs.addEntity();
+			ecs.addComponent<VisibleObject>(plateform, x, y);
+			ecs.addComponent<BoxCollider>(plateform, w, h);
+			plateforms.insert(plateform);
+			//plateforms.emplace_back(x, y);
+			//plateformColliders.emplace_back(w, h);
 		}
 	}
 
@@ -62,15 +65,15 @@ public:
 			updateDeltaTime();
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
-				handleInputs(quit, renderingManager, players[0]);
+				handleInputs(quit, renderingManager, player);
 				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
-				detectStaticSliding(players, playersColliders, plateforms, plateformColliders);
-				detectStaticCollisions(players, playersColliders, plateforms, plateformColliders);
+				detectStaticSliding(players, plateforms);
+				detectStaticCollisions(players, plateforms);
 
 				applyMovement(players, deltaTime);//also apply gravity
-				renderingManager.render(players, playersColliders, plateforms, plateformColliders);
+				renderingManager.render(players, plateforms);
 			}
 			else
 				SDL_Delay(lastTime + refreshTimeInterval * 1000 - currentTime);
@@ -84,11 +87,12 @@ public:
 	};
 
 	///@brief une classe sera dedicasse a la gestion d'evenements
-	void handleInputs(bool &quit, Renderer& renderer, MovingObject& player) {
+	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
+		MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
 
-
+		
 		const Uint8* state = SDL_GetKeyboardState(NULL);
 		//SDL_PumpEvents();
 		/*if (state[SDL_SCANCODE_UP]) {

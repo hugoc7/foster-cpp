@@ -3,10 +3,10 @@
 #include "Components.h"
 #include <vector>
 #include <algorithm>
+#include "ECS.h"
 
 
-void detectStaticCollisions(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& fixedObjects, std::vector<BoxCollider> const& fixedColliders);
+void detectStaticCollisions(ArrayList<EntityID> const& movingObjects, ArrayList<EntityID> const& staticObjects);
 
 void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movingCollider,
 	VisibleObject const& fixedObject, BoxCollider const& fixedCollider);
@@ -26,7 +26,6 @@ bool slidingMovingSegmentWithSegment(Vector2 const& A, Vector2 const& B, Vector2
 void printCollidingSegments(Vector2(& const a)[2], Vector2(& const b)[2]);
 void printTouchingSegments(Vector2 const& a, Vector2 const& b, Vector2 const& o, Vector2 const& p);
 
-void detectStaticSliding(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders);
+void detectStaticSliding(ArrayList<EntityID> const& movingObjects, ArrayList<EntityID> const& staticObjects);
 void detectStaticSliding(MovingObject& movingObject, BoxCollider const& movingCollider,
 	VisibleObject const& staticObject, BoxCollider const& staticCollider);

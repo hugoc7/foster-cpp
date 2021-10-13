@@ -6,7 +6,8 @@
 #include <iostream>
 #include "ECS.h"
 #include "Game.h"
-
+#include "Components.h"
+/*
 struct Velocity {
     int speed{};
 };
@@ -40,7 +41,7 @@ void testECS(){
     ecs.removeComponent<Transform>(hugo);
     ecs.removeEntity(valou);
     std::cout << "mina" << ecs.getComponent<Velocity>(hugo).speed << std::endl;
-}
+}*/
 
 void testGeometry() {
     Matrix2 m{ 2.0, 1.0, 1.0, 1.0 };
@@ -69,6 +70,12 @@ struct B {
     }
 };
 
+void registerAllComponents() {
+    ecs.registerComponent<BoxCollider>();
+    ecs.registerComponent<MovingObject>();
+    ecs.registerComponent<VisibleObject>();
+}
+
 int main(int argc, char* args[])
 {
 
@@ -77,7 +84,7 @@ int main(int argc, char* args[])
    /* testCollisions();
     testGeometry();
     testECS();*/
-
+    registerAllComponents();
     Game game{};
     game.gameLoop();
 

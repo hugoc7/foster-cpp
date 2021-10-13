@@ -9,12 +9,11 @@
 #include <chrono>
 #include <assert.h>
 
-#define MAX_ENTITIES 5000
+//Attention, l'Entity Component System est un singleton, il ne peut y en avoir qu'un !
 
-#define VELOCITY 0
-#define TRANSFORM 1
-#define COLLIDER 2
-#define MAX_COMPONENTS 3
+#define MEAN_ENTITIES 30
+
+#define MAX_COMPONENTS 4
 
 #define NO_COMPONENT -1
 
@@ -28,8 +27,8 @@ template <typename T>
 class ArrayList {
 public:
     std::vector<T> v{};
-    ArrayList() : v(MAX_ENTITIES) {
-    }
+   /* ArrayList() : v(MEAN_ENTITIES) {
+    }*/
 
     //avec un move ca irait un peu plus vite, j'ai pas testé avec  const& ???
     void insert(T val) {
@@ -134,10 +133,10 @@ public:
     template <typename T>
     T& getComponent(EntityID entity) {
         ComponentType compType = getComponentType<T>();
-        assert(componentVectors[compType] != nullptr);
+        assert(componentVectors[compType] != nullptr, "This component does not exist.");
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
-        assert(entity >= 0 && entity < entities.size());
-        assert(entities[entity].components[compType] != NO_COMPONENT);
+        assert(entity >= 0 && entity < entities.size(), "Bad entity ID.");
+        assert(entities[entity].components[compType] != NO_COMPONENT, "This entity does not own this component.");
         return (*compVec)[entities[entity].components[compType]];
     }
 
@@ -174,3 +173,5 @@ private:
         return componentType;
     }
 };
+
+extern ECS ecs;
