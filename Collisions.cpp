@@ -19,36 +19,37 @@ _ on peut partitionner l'espace en zones pour éviter de tester toutes les platef
 
 
 void detectStaticCollisions(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders, float deltaTime) {
+	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders) {
 	
 	//for each moving object
 	for (int i = 0; i < movingObjects.size(); i++) {
 
 		//for each static object (plateform)
 		for (int j = 0; j < staticObjects.size(); j++) {
-			detectStaticCollisions(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j], deltaTime);
+			detectStaticCollisions(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j]);
 		}
 	}
 }
 
 void detectStaticSliding(std::vector<MovingObject>& movingObjects, std::vector<BoxCollider> const& movingColliders,
-	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders, float deltaTime) {
+	std::vector<VisibleObject> const& staticObjects, std::vector<BoxCollider> const& staticColliders) {
 
 	//for each moving object
 	for (int i = 0; i < movingObjects.size(); i++) {
 
 		//for each static object (plateform)
 		for (int j = 0; j < staticObjects.size(); j++) {
-			detectStaticSliding(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j], deltaTime);
+			detectStaticSliding(movingObjects[i], movingColliders[i], staticObjects[j], staticColliders[j]);
 		}
 	}
 }
 
-bool glissement(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 const& P, Vector2& move) {
+/// @brief Manage the sliding between a translating segment [OP] and a static segment [AB] by modifiying the movement
+/// @return true if there is a contact between the two segment (except if two extreme point are in contact for instance A = O)
+bool slidingMovingSegmentWithSegment(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 const& P, Vector2& move) {
 	float kAB{ -1 }, kOP{ -1 };
 	collisionSegmentSegment(O, P, kOP, A, B, kAB);
 	float vraiGlissement = false;//on entend par la un glissement qui modifie le mouvement.
-	Vector2 nouvelAxeDeGlissement;
 
 	//Si les segments se touchent (mais ne se coupent pas!) des leur position initiales
 	//alors il y a GLISSEMENT
@@ -57,7 +58,6 @@ bool glissement(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 co
 		Vector2 nStatic{ -(B - A).y, (B - A).x };
 		nStatic *= 1.0f / norme(nStatic);
 		if (dot(move, nStatic) < 0) {
-			//std::cout << "WoWa";
 			vraiGlissement = true;
 			move = move - dot(move, nStatic) * nStatic;
 		}
@@ -82,7 +82,6 @@ bool glissement(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 co
 	else if (equals(kOP, 1) && !equals(kAB, 0) && !equals(kAB, 1)) {
 		Vector2 nStatic{ -(B - A).y, (B - A).x };
 		nStatic *= 1.0f / norme(nStatic);
-		//std::cout << "A1. ";
 		if (dot(move, nStatic) * dot(O - P, nStatic) < 0) {
 			vraiGlissement = true;
 			move = move - dot(move, nStatic) * nStatic;
@@ -91,8 +90,6 @@ bool glissement(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 co
 	else if (equals(kOP, 0) && !equals(kAB, 0) && !equals(kAB, 1)) {
 		Vector2 nStatic{ -(B - A).y, (B - A).x };
 		nStatic *= 1.0f / norme(nStatic);
-		//std::cout << "A2. ";
-
 		if (dot(move, nStatic) * dot(P - O, nStatic) < 0) {
 			vraiGlissement = true;
 			move = move - dot(move, nStatic) * nStatic;
@@ -102,23 +99,19 @@ bool glissement(Vector2 const& A, Vector2 const& B, Vector2 const& O, Vector2 co
 		return false;
 
 	if (vraiGlissement) {
-		//std::cout << "\nmove: " << oldMove;
 		printTouchingSegments(O, P, A, B);
 	}
 	return true;
 }
 
-/*detecte et calcul la distance d'une collision entre un segment en translation et un segmnt fixe
-* return = la distance en pourcentage du vecteur de deplacement jusqu'à la collision ou 1 si pas de collision
-* */
+/// @brief Manage the collision between a translating segment and a static segment by modifiying the movement
+/// @return distance to collision in percentage of the move vector or 1 if no collision (between 0 and 1)
 float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vector2 (&const staticSegment)[2], Vector2& move) {
+	
 	float cutsDetected[4]{ -1.0f, -1.0f, -1.0f, -1.0f };//negative value = no cut
 	float kStatic[4]{ -1,-1,-1,-1 };
 	float kMoving[4]{ -1,-1,-1,-1 };
 	float distanceToCollision = -1.0f;
-
-	//std::cout << "\nMOVE INIT: " << move;
-
 
 	//Si le segment est colineaire avec la vitesse on a pas de parallelogramme
 	if (equals(determinant(movingSegment[1] - movingSegment[0], move), 0)) {
@@ -137,7 +130,7 @@ float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vec
 		move *= distanceToCollision;
 		if (!equals(distanceToCollision, 1.0f)) {
 			printCollidingSegments(movingSegment, staticSegment);
-			std::cout << "caca";
+			
 		}
 		return distanceToCollision;
 	}
@@ -158,47 +151,65 @@ float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vec
 	//1 : segment à sa position d'arrivee
 	//2 : segment de trajectoire partant du point 0
 	//3 : segment de trajectoire partant du point 1
-	//cutsDetected[0] = collisionSegmentSegment(movingSegment[0], movingSegment[1], staticSegment[0], staticSegment[1]);
+	cutsDetected[0] = collisionSegmentSegment(movingSegment[0], movingSegment[1], staticSegment[0], staticSegment[1]);
 	cutsDetected[1] = collisionSegmentSegment(movingSegment[0] + move, movingSegment[1] + move, staticSegment[0], staticSegment[1]);
 	cutsDetected[2] = collisionSegmentSegment(movingSegment[0], movingSegment[0] + move, staticSegment[0], staticSegment[1]);
 	cutsDetected[3] = collisionSegmentSegment(movingSegment[1], movingSegment[1] + move, staticSegment[0], staticSegment[1]);
 
-	if (cutsDetected[2] > 0) {
-		if (cutsDetected[1] > 0) {
-			distanceToCollision = cutsDetected[2];
-		}
-		else if (cutsDetected[3] > 0) {
-			distanceToCollision = std::min(cutsDetected[2], cutsDetected[3]);
-		}
-		else {
-			distanceToCollision = std::min(cutsDetected[2], distToEdges);
-		}
-	}
-	else if (cutsDetected[3] > 0)
-	{
-		if (cutsDetected[1] > 0) {
-			distanceToCollision = cutsDetected[3];
-		}
-		else {
-			distanceToCollision = std::min(cutsDetected[3], distToEdges);
-		}
-	}
-	else if (cutsDetected[1] > 0) {
-		distanceToCollision = distToEdges;
-	}
-	//le segmet fixe est dans le parallelogram, le point d'impact est un des 2 bords du segment
-	else if (pointInParallelogram(staticSegment[0], movingSegment[0], movingSegment[1] - movingSegment[0], move)) {
-		distanceToCollision = distToEdges;
-		std::cout << "point in parallelogramm";
-	}
+	if (cutsDetected[0] > 0)
+		distanceToCollision = 0;
 	else {
-		distanceToCollision = 1.0f;
+
+		if (cutsDetected[2] > 0) {
+			if (cutsDetected[1] > 0) {
+				distanceToCollision = cutsDetected[2];
+			}
+			else if (cutsDetected[3] > 0) {
+				distanceToCollision = std::min(cutsDetected[2], cutsDetected[3]);
+			}
+			else {
+				distanceToCollision = std::min(cutsDetected[2], distToEdges);
+			}
+		}
+		else if (cutsDetected[3] > 0)
+		{
+			if (cutsDetected[1] > 0) {
+				distanceToCollision = cutsDetected[3];
+			}
+			else {
+				distanceToCollision = std::min(cutsDetected[3], distToEdges);
+			}
+		}
+		else if (cutsDetected[1] > 0) {
+			distanceToCollision = distToEdges;
+			//ici on peut avoir un probleme car distToEdges peut etre egal à 1000 (car pointInParallelogram == false)
+			//je pense que ca vient du putain de calcul flottant
+			//donc on peut rajouter ceci au cas ou:
+
+			//bricolage de securite
+			/*if (distToEdges > 1+PRECISION ) {
+				distanceToCollision = 1.0f;
+			}*/
+		}
+		//le segmet fixe est dans le parallelogram, le point d'impact est un des 2 bords du segment
+		else if (pointInParallelogram(staticSegment[0], movingSegment[0], movingSegment[1] - movingSegment[0], move)) {
+			assert(distToEdges <= 1 && distToEdges >= 0);
+			distanceToCollision = distToEdges;
+		}
+		else {
+			distanceToCollision = 1.0f;
+		}
 	}
+	assert(distanceToCollision >= 0 && distanceToCollision <= 1);
+	//PB ici assert failed
 	move *= distanceToCollision;
 	if (!equals(distanceToCollision, 1.0f)) {
 		printCollidingSegments(movingSegment, staticSegment);
 	}
+	return 0;
 }
+
+
 
 void showRects(Vector2 (&const a)[4], Vector2 (&const b)[4]) {
 	std::cout << a[1] << " " << a[3] << "  --  " << b[1] << " " << b[3] << "\n";
@@ -213,7 +224,7 @@ void printTouchingSegments(Vector2 const& a, Vector2 const& b, Vector2 const& o,
 }
 
 void detectStaticSliding(MovingObject& movingObject, BoxCollider const& movingCollider,
-	VisibleObject const& staticObject, BoxCollider const& staticCollider, float deltaTime) {
+	VisibleObject const& staticObject, BoxCollider const& staticCollider) {
 
 	//if speed is 0 then stop
 	if (equals(movingObject.newSpeed.x, 0) && equals(movingObject.newSpeed.y, 0)) return;
@@ -242,31 +253,32 @@ void detectStaticSliding(MovingObject& movingObject, BoxCollider const& movingCo
 		{staticColliderPoints[3], staticColliderPoints[2]},
 		{staticColliderPoints[2], staticColliderPoints[0]},
 	};
-	Vector2 deltaMove{ movingObject.move };
 	for (int j = 0; j < 4; j++) {
 
 		//Ignorer les cotes de l'objet fixe dont la normale
 		//est dans le sens du mouvement (attention a la convention)
-		//Vector2 n{ -1.0f * (staticSegments[j][1].y - staticSegments[j][0].y), staticSegments[j][1].x - staticSegments[j][0].x };
-		//if (dot(n, deltaMove) > 0) continue;
+		/*Vector2 n{ -1.0f * (staticSegments[j][1].y - staticSegments[j][0].y), staticSegments[j][1].x - staticSegments[j][0].x };
+		if (dot(n, movingObject.move) > 0+PRECISION) {
+			
+			std::cout << "\nyoloDebug: "<< staticSegments[j][0] << staticSegments[j][1] << n << movingObject.move;
+			continue;
+		}*/
 
 		for (int i = 0; i < 4; i++) {
 
 			//Ignorer les cotes de l'objet en mouvement dont la normale
 			//n'est pas dans le sens du mouvement (attention a la convention)
 			//Vector2 n{ -1.0f * (movingSegments[i][1].y - movingSegments[i][0].y), movingSegments[i][1].x - movingSegments[i][0].x };
-			//if (dot(n, deltaMove) < 0) continue;
-			glissement(staticSegments[j][0], staticSegments[j][1], movingSegments[i][0], movingSegments[i][1], deltaMove);
+			//if (dot(n, movingObject.move) < 0) continue;
 
+			slidingMovingSegmentWithSegment(staticSegments[j][0], staticSegments[j][1], 
+				movingSegments[i][0], movingSegments[i][1], movingObject.move);
 		}
 	}
-	movingObject.move = deltaMove;
-	//movingObject.newSpeed = (1.0f / deltaTime) * deltaMove;
-	//showRects(movingColliderPoints, staticColliderPoints);
 }
 
 void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movingCollider,
-	VisibleObject const& staticObject, BoxCollider const& staticCollider, float deltaTime) {
+	VisibleObject const& staticObject, BoxCollider const& staticCollider) {
 
 	//if speed is 0 then stop
 	if (equals(movingObject.newSpeed.x, 0) && equals(movingObject.newSpeed.y, 0)) return;
@@ -295,86 +307,36 @@ void detectStaticCollisions(MovingObject& movingObject, BoxCollider const& movin
 		{staticColliderPoints[3], staticColliderPoints[2]},
 		{staticColliderPoints[2], staticColliderPoints[0]},
 	};
-	Vector2 deltaMove{ movingObject.move };
-	//bool coteCollisions[4]{ false, false, false, false };
-	//il faudra optimiser en utilisant le constructeur par déplacement ... std::move (en fait pas forcément besoin ...)
 	for (int j = 0; j < 4; j++) {
 
 		//Ignorer les cotes de l'objet fixe dont la normale
 		//est dans le sens du mouvement (attention a la convention)
-		//Vector2 n{ -1.0f * (staticSegments[j][1].y - staticSegments[j][0].y), staticSegments[j][1].x - staticSegments[j][0].x };
-		//if (dot(n, deltaMove) > 0) continue;
+		Vector2 n{ -1.0f * (staticSegments[j][1].y - staticSegments[j][0].y), staticSegments[j][1].x - staticSegments[j][0].x };
+		if (dot(n, movingObject.move) > 0) continue;
 
 		for (int i = 0; i < 4; i++) {
-
 			//Ignorer les cotes de l'objet en mouvement dont la normale
 			//n'est pas dans le sens du mouvement (attention a la convention)
-			//Vector2 n{ -1.0f * (movingSegments[i][1].y - movingSegments[i][0].y), movingSegments[i][1].x - movingSegments[i][0].x };
-			//if (dot(n, deltaMove) < 0) continue;
+			Vector2 n{ -1.0f * (movingSegments[i][1].y - movingSegments[i][0].y), movingSegments[i][1].x - movingSegments[i][0].x };
+			if (dot(n, movingObject.move) < 0) continue;
 
-			//On ne teste que les segments qui sont parallèles entre eux 
-			/*if (!equals(determinant(movingSegments[i][1] - movingSegments[i][0], staticSegments[j][1] - staticSegments[j][0]), 0)) {
-				continue;
-			}*/
-
-			//std::cout << movingSegments[i][0] << movingSegments[i][1] << " => " << staticSegments[j][0] << staticSegments[j][1] << " V:" << deltaMove;
-			float newMoveReductionFactor{ collisionMovingSegmentWithSegment(movingSegments[i], staticSegments[j], deltaMove) };
-			//std::cout << " => " << newMoveReductionFactor << "\n";
-
-			/*if((newMoveReductionFactor >= 0 && newMoveReductionFactor < 1) || newMoveReductionFactor == -3){
-				const float marge = 0.001f;
-				if (i == 0) {
-					coteCollisions[GAUCHE] = true;
-				}
-				if (i == 1) {
-					coteCollisions[HAUT] = true;
-
-				}
-				if (i == 2) {
-					coteCollisions[DROITE] = true;
-				}
-				if (i == 3) {
-					coteCollisions[BAS] = true;
-				}
-			}*/
-
+			collisionMovingSegmentWithSegment(movingSegments[i], staticSegments[j], movingObject.move);
 		}
 	}
-	/*const float marge = 0.001f;
-	if (coteCollisions[GAUCHE]) {
-		std::cout << "\nCollision gauche";
-		deltaMove.x += marge;
-	}
-	if (coteCollisions[HAUT]) {
-		std::cout << "\nCollision haut";
-		deltaMove.y -= marge;
-	}
-	if (coteCollisions[DROITE]) {
-		std::cout << "\nCollision droite";
-		deltaMove.x -= marge;
-	}
-	if (coteCollisions[BAS]) {
-		std::cout << "\nCollision bas";
-		deltaMove.y += marge;
-	}*/
-	//std::cout << "\nfinal delta move: " << deltaMove;
-	movingObject.move = deltaMove;
-	//movingObject.newSpeed = (1.0f / deltaTime) * deltaMove;
-	//showRects(movingColliderPoints, staticColliderPoints);
 }
-//retourne la distance entre le point P et le vecteur V par rapport au vecteur U (U et V ne doivent pas etre alignes)
+///@brief retourne la distance entre le point P et le vecteur V par rapport au vecteur U (U et V ne doivent pas etre alignes)
 float distance(Vector2 const& P, Vector2 const& U, Vector2 const& V) {
 	assert(std::abs(determinant(U, V)) > PRECISION);
 	return (U.x * P.y - U.y * P.x) / determinant(U, V);
 }
 
-//retourne la distance entre le segment [AB] et le vecteur V par rapport au vecteur U (U et V ne doivent pas etre alignes)
+///@brief retourne la distance entre le segment [AB] et le vecteur V par rapport au vecteur U (U et V ne doivent pas etre alignes)
 float distance(Vector2 const& A, Vector2 const& B, Vector2 const& U, Vector2 const& V) {
 	return std::min(distance(A, U, V), distance(B, U, V));
 }
 
 
-//test if P is in parallogram OAB
+///@brief test if P is in parallogram OAB
 bool pointInParallelogram(Vector2 const& P, Vector2 const& O, Vector2 const& U, Vector2 const& V) {
 	float det = determinant(U, V);
 	assert(!equals(det, 0));
@@ -428,48 +390,33 @@ void collisionSegmentSegment(Vector2 const& A, Vector2 const& B, float& kAB, Vec
 	else {
 		kAB = (A.x * OP.y - O.x * OP.y - OP.x * A.y + OP.x * O.y) / det;
 		kOP = -1.0f * (A.y * AB.x - O.y * AB.x - AB.y * A.x + AB.y * O.x) / det;
-		if (kAB < 0-PRECISION || kAB > 1+PRECISION || kOP < 0-PRECISION || kOP > 1+PRECISION) { // attention aux comparaison de flottants !
+		if (kAB < 0 || kAB > 1 || kOP < 0 || kOP > 1) { // attention aux comparaison de flottants !
 			kAB = -1;
 			kOP = -1;
 		}
 	}
 }
 
-//if collision (cut, not just touch !) return k such as AI = A + k*AB
-//return -1 or -3 if no collision
+///@brief if collision (cut, not just touch !) return k such as AI = A + k*AB
+///@return -1 or -3 if no collision
 float collisionSegmentSegment(Vector2 A, Vector2 B, Vector2 O, Vector2 P)
 {
 	Vector2 AB{ B - A }, OP{ P - O };
 	float det = determinant(AB, -1.0f * OP);
 	//Si [AB] et [OP] sont paralleles
 	if (equals(det, 0)) {
-
-		//Si [AB] et [OP] sont alignees
-		/*if (equals(determinant(OP, A - O), 0)) {
-
-			//On projette A, B et P sur la droite (OP)
-			float xA = dot(OP, A - O);
-			float xB = dot(OP, B - O);
-			float xP = dot(OP, OP);
-			//Si les segments se chevauchent
-			if ((0 <= xA && xA <= xP) || (0 <= xB && xB <= xP)) {
-				return -3.0f;
-			}
-		}
-		else*/
-		//inutile ici car on ne détecte pas le contact seul
 		return -1.0f;
 	}
 	//Si [AB] et [OP] ne sont PAS paralleles
 	float k = (A.x * OP.y - O.x * OP.y - OP.x * A.y + OP.x * O.y) / det;
 	float t = -1.0f * (A.y * AB.x - O.y * AB.x - AB.y * A.x + AB.y * O.x) / det;
-	if (k <= 0 || k >= 1 || t <= 0 || t >= 1)
+	if (k <= 0+PRECISION || k >= 1-PRECISION || t <= 0+PRECISION || t >= 1-PRECISION)
 		return -1.0f;// attention aux comparaison de flottants !
 	else
 		return k;
 }
 
-//retourne la projection du point P sur le vecteur U parallelement au vecteur V (U et V ne doivent pas etre alignes)
+///@brief retourne la projection du point P sur le vecteur U parallelement au vecteur V (U et V ne doivent pas etre alignes)
 float projection(Vector2 const& P, Vector2 const& U, Vector2 const& V) {
 	assert(!equals(determinant(U, V), 0));
 	return (P.x * V.y - P.y * V.x) / determinant(U, V);

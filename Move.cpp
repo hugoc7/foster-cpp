@@ -3,6 +3,7 @@
 #include "Move.h"
 #include <iostream>
 
+const float Gravity = 15.0f;
 
 void applyMovement(std::vector<MovingObject>& objects, float deltaTime) {
 	for (int i = 0; i < objects.size(); i++) {
@@ -10,16 +11,20 @@ void applyMovement(std::vector<MovingObject>& objects, float deltaTime) {
 	}
 }
 
+void updateMovementBeforeCollision(std::vector<MovingObject>& objects, float deltaTime) {
+	for (int i = 0; i < objects.size(); i++) {
+		updateMovementBeforeCollision(objects[i], deltaTime);
+	}
+}
+
 //also applies gravity
 void applyMovement(MovingObject& object, float deltaTime) {
-	static const float gravity = 4.0f;
-
-	object.speed = object.newSpeed;
-	object.oldPosition = object.position;
-	//object.speed.y -= gravity * deltaTime;
-
-	object.position += object.move;//deltaTime * object.speed;
+	object.position += object.move;
+	object.speed = (1.0f / deltaTime) * object.move;
 	object.newSpeed = object.speed;
-	//std::cout << object.oldPosition.x - object.position.x << " ; " << object.oldPosition.x - object.position.x << "\n";
+}
 
+void updateMovementBeforeCollision(MovingObject& object, float deltaTime) {
+	object.newSpeed.y -= Gravity * deltaTime;
+	object.move = deltaTime * object.newSpeed;
 }

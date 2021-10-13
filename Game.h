@@ -7,23 +7,20 @@
 #include <vector>
 #include "SDL_events.h"
 #include "Rendering.h"
+#include <fstream>
 
-/*
-* TODO:
-* Une fonction pour passer des coordonnées du monde aux coordonnées de l'écran, viewport ?
-*/
 
 class Game {
 private:
 	int lastTime{ 0 }, currentTime{ 0 };
-	const float FPS{ 15.0 };
+	const float FPS{ 60.0 };
 	float deltaTime{}, refreshTimeInterval{ 1.0f / FPS};
 	std::vector<VisibleObject> plateforms{};
 	std::vector<BoxCollider> plateformColliders{};
 	std::vector<MovingObject> players{};
 	std::vector<BoxCollider> playersColliders{};
 	Renderer renderingManager{};
-	Vector2 playerMaxSpeed{ 4.0f, 4.0f};
+	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 
 
 public:
@@ -31,11 +28,12 @@ public:
 		players.emplace_back(4.5, 7);
 		playersColliders.emplace_back(1, 2);
 
-		plateforms.emplace_back(4.5f, 3.5f);
+		readPlateformsFromFile("map.txt", plateforms, plateformColliders);
+		/*plateforms.emplace_back(4.5f, 3.5f);
 		plateformColliders.emplace_back(5.0f, 1.0f);
 
 		plateforms.emplace_back(9.5f, 5.5f);
-		plateformColliders.emplace_back(3.0f, 1.0f);
+		plateformColliders.emplace_back(3.0f, 1.0f);*/
 
 
 		/*Vector2 OP[2]{Vector2(4.264,4.144),Vector2(4.264,6.144) };
@@ -47,6 +45,16 @@ public:
 
 
 	}
+	void readPlateformsFromFile(std::string const& filename, std::vector<VisibleObject>& plateforms, std::vector<BoxCollider>& plateformColliders) {
+		std::ifstream file(filename);
+		float x, y, w, h;
+		while (!file.eof() && file.good()) {
+			file >> x >> y >> w >> h;
+			std::cout << x << ", " << y << "  ;  " << w << ", " << h << std::endl;
+			plateforms.emplace_back(x, y);
+			plateformColliders.emplace_back(w, h);
+		}
+	}
 
 	void gameLoop() {
 		bool quit = false;
@@ -55,11 +63,11 @@ public:
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, players[0]);
-				players[0].move = deltaTime * players[0].newSpeed;
+				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
-				detectStaticSliding(players, playersColliders, plateforms, plateformColliders, deltaTime);
-				detectStaticCollisions(players, playersColliders, plateforms, plateformColliders, deltaTime);
+				detectStaticSliding(players, playersColliders, plateforms, plateformColliders);
+				detectStaticCollisions(players, playersColliders, plateforms, plateformColliders);
 
 				applyMovement(players, deltaTime);//also apply gravity
 				renderingManager.render(players, playersColliders, plateforms, plateformColliders);
@@ -75,7 +83,7 @@ public:
 		deltaTime = float(currentTime - lastTime) / 1000.0f;
 	};
 
-	//une classe sera dedicasse a la gestion d'evenements
+	///@brief une classe sera dedicasse a la gestion d'evenements
 	void handleInputs(bool &quit, Renderer& renderer, MovingObject& player) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
@@ -83,7 +91,7 @@ public:
 
 		const Uint8* state = SDL_GetKeyboardState(NULL);
 		//SDL_PumpEvents();
-		if (state[SDL_SCANCODE_UP]) {
+		/*if (state[SDL_SCANCODE_UP]) {
 			player.newSpeed.y = playerMaxSpeed.y;
 		}
 		else if (state[SDL_SCANCODE_DOWN]) {
@@ -91,7 +99,7 @@ public:
 		}
 		else {
 			player.newSpeed.y = 0;
-		}
+		}*/
 		if (state[SDL_SCANCODE_RIGHT]) {
 			player.newSpeed.x = playerMaxSpeed.x;
 		}
@@ -101,52 +109,17 @@ public:
 		else {
 			player.newSpeed.x = 0;
 		}
-		//std::cout << "\ncontrol speed: " << player.newSpeed;
 		switch (e.type) {
 			case SDL_QUIT:
 			quit = true;
 			break;
-			/*case SDL_KEYDOWN:
-				if (e.key.repeat) break;
-				switch (e.key.keysym.sym) {
-				case SDLK_UP:
-					player.newSpeed.y = playerMaxSpeed.y;
-					break;
-				case SDLK_DOWN:
-					player.newSpeed.y = -1.0f * playerMaxSpeed.y;
-					break;
-				case SDLK_RIGHT:
-					player.newSpeed.x = playerMaxSpeed.x;
-					break;
-				case SDLK_LEFT:
-					player.newSpeed.x = -1.0f * playerMaxSpeed.x;
-					break;
-				}
-				//std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
-				break;
-			case SDL_KEYUP:
-				if (e.key.repeat) break;
-				switch (e.key.keysym.sym) {
-				case SDLK_UP:
-					player.newSpeed.y = 0;
-					break;
-				case SDLK_DOWN:
-					player.newSpeed.y = 0;
-					break;
-				case SDLK_RIGHT:
-					player.newSpeed.x = 0;
-					break;
-				case SDLK_LEFT:
-					player.newSpeed.x = 0;
-					break;
-				}
-				//std::cout << "new speed: " << player.newSpeed.x << "; " << player.newSpeed.y << "\n";
-				break;*/
 			case SDL_WINDOWEVENT:
-				//renderer.getNewWindowSize();
+				renderer.getNewWindowSize();
+				break;
+			case SDL_KEYDOWN:
+				if (e.key.keysym.sym == SDLK_UP)
+					player.newSpeed.y = playerMaxSpeed.y;
 				break;
 		}
-		
-	
 	}
 };

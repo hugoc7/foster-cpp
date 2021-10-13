@@ -1,6 +1,6 @@
 #pragma once
 
-#define PRECISION 0.00001f //precision pour la comparaisons de float
+#define PRECISION 0.000001f //precision pour la comparaisons de float
 
 
 #include <cmath>
