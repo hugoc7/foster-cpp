@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <chrono>
 #include <assert.h>
+#include "Containers.h"
+#include <functional>
 
 //Attention, l'Entity Component System est un singleton, il ne peut y en avoir qu'un !
 
@@ -23,27 +25,7 @@ using ComponentType = int;
 
 extern int componentTypesCounter;
 
-template <typename T>
-class ArrayList {
-public:
-    std::vector<T> v{};
-   /* ArrayList() : v(MEAN_ENTITIES) {
-    }*/
 
-    //avec un move ca irait un peu plus vite, j'ai pas testé avec  const& ???
-    void insert(T val) {
-        v.push_back(val);
-    }
-    void erase(T const& val) {
-        for (unsigned int i = 0; i < v.size() - 1; i++) {
-            if (v[i] == val) {
-                v[i] = v[v.size() - 1];
-                break;
-            }
-        }
-        v.pop_back();
-    }
-};
 
 //C'est l'utilisateur qui gere lui meme ses systemes, il faut juste utiliser ArrayList au lieu de std::set pour enrgeistrer les entities
 //
@@ -55,28 +37,15 @@ public:
 class Entity {
 public:
     Entity() {
+        reinit();
+    }
+    void reinit() {
         std::fill(std::begin(components), std::end(components), NO_COMPONENT);
     }
     ComponentID components[MAX_COMPONENTS];
+
 };
 
-
-template<typename T>
-inline void removeFromVector(std::vector<T>& vec, int ind) {
-    int lastIndex = vec.size() - 1;
-    if (ind != lastIndex) {
-        vec[ind] = vec[lastIndex];
-    }
-    vec.pop_back();
-}
-template<typename T>
-inline void removeFromVector(std::vector<T>* vec, int ind) {
-    int lastIndex = vec->size() - 1;
-    if (ind != lastIndex) {
-        (*vec)[ind] = (*vec)[lastIndex];
-    }
-    vec->pop_back();
-}
 
 
 
@@ -84,11 +53,25 @@ class ECS {
 public:
     //Entitys
     EntityID addEntity() {
-        entities.emplace_back();
-        return entities.size() - 1;
+        if (!removedEntities.empty()) {
+            //recycling last removed entity
+            EntityID entity = removedEntities[removedEntities.size() - 1];
+            removedEntities.pop_back();
+            entities[entity].reinit();//put all components to NO_COMPONENT value
+            return entity;
+        }
+        else {
+            entities.emplace_back();
+            return entities.size() - 1;
+        }
     }
+    //warning: user has to remove all components manually before removing the entity
     void removeEntity(EntityID entityID) {
-        removeFromVector<Entity>(entities, entityID);
+        //removeFromVector<Entity>(entities, entityID); //NO because it invalidates the last entity ID :(
+        //Solution 1 : naive
+        //entities.erase(entities.begin()+entityID);
+        //Solution 2 : "clever"
+        removedEntities.push_back(entityID);
     }
 
     //Component
@@ -99,7 +82,7 @@ public:
         componentVectors[compType] = reinterpret_cast<void*>(new std::vector<T>);
 
         //the destructor of the component vector is called automatically when ECS is destroyed
-        vectorDestructors[compType] = &ECS::unregisterComponent<T>;
+        vectorDestructors.push_back(std::mem_fn(&ECS::unregisterComponent<T>));
     }
 
     template <typename T, typename ... Args>
@@ -111,6 +94,8 @@ public:
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
         compVec->emplace_back(std::forward<Args>(args)...);
         ComponentID compID = compVec->size() - 1;
+
+        componentToEntity[compType].push_back(entity);
 
         //ajout du composant dans le vector des entites
         assert(entities[entity].components[compType] == NO_COMPONENT);
@@ -127,7 +112,17 @@ public:
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
         assert(entity >= 0 && entity < entities.size());
         assert(entities[entity].components[compType] != NO_COMPONENT);
-        removeFromVector(compVec, (int)entities[entity].components[compType]);
+
+        ComponentID componentToDelete = entities[entity].components[compType];
+        removeFromVector(compVec, (int)componentToDelete);//replace the componentToDelete by the last component
+        removeFromVector(componentToEntity, (int)componentToDelete);
+
+        if (compVec->size() > 0) {
+            assert(componentToEntity[compType].size() == compVec->size());
+            //now the entity of the replaced component has the good index to the component
+            entities[componentToEntity[compType][componentToDelete]].components[compType] = componentToDelete;
+        }
+
         entities[entity].components[compType] = NO_COMPONENT;
     }
     template <typename T>
@@ -141,21 +136,21 @@ public:
     }
 
     ~ECS() {
-        for (int i = 0; i < MAX_COMPONENTS; i++) {
-            if (vectorDestructors[i] != nullptr) {
-                ((*this).*vectorDestructors[i])();
-            }
+        for (int i = 0; i < vectorDestructors.size(); i++) {
+            vectorDestructors[i](this);
         }
     }
     ECS() {
         std::fill(std::begin(componentVectors), std::end(componentVectors), nullptr);
-        std::fill(std::begin(vectorDestructors), std::end(vectorDestructors), nullptr);
     }
 
 private:
     std::vector<Entity> entities;
     void* componentVectors[MAX_COMPONENTS];
-    void (ECS::* vectorDestructors[MAX_COMPONENTS])(void);//array of pointers of functions
+    std::vector<std::function<void(ECS*)>> vectorDestructors;
+    std::vector<EntityID> componentToEntity[MAX_COMPONENTS];
+    std::vector<EntityID> removedEntities;//contains indices of removed entities (they are sparse in the entities vector and can be reused)
+
 
 
     template <typename T>
