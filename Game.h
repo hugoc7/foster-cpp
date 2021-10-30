@@ -8,6 +8,9 @@
 #include "SDL_events.h"
 #include "Rendering.h"
 #include <fstream>
+#include "Server.h"
+#include "ScoreBoard.h"
+
 
 
 class Game {
@@ -25,9 +28,20 @@ private:
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 	EntityID player;
 
+	//Network
+	std::vector<PlayerInfos> playersInfos;
+	Server server;
+
+	//GUI
+	ScoreBoard scoreBoard;
+
+
 
 public:
-	Game() {
+	Game() : 
+		renderingManager(),
+		scoreBoard(renderingManager)
+	{
 		player = ecs.addEntity();
 		ecs.addComponent<MovingObject>(player, 4.5, 7);
 		ecs.addComponent<BoxCollider>(player, 1, 2);
@@ -42,14 +56,15 @@ public:
 		plateforms.emplace_back(9.5f, 5.5f);
 		plateformColliders.emplace_back(3.0f, 1.0f);*/
 
-
+		//Network
+		server.start();
 	}
 	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
 		std::ifstream file(filename);
 		float x, y, w, h;
 		while (!file.eof() && file.good()) {
 			file >> x >> y >> w >> h;
-			std::cout << x << ", " << y << "  ;  " << w << ", " << h << std::endl;
+			//std::cout << x << ", " << y << "  ;  " << w << ", " << h << std::endl;
 			EntityID plateform = ecs.addEntity();
 			ecs.addComponent<VisibleObject>(plateform, x, y);
 			ecs.addComponent<BoxCollider>(plateform, w, h);
@@ -59,10 +74,42 @@ public:
 		}
 	}
 
+	void handleNetwork() {
+		//Show chat messages in the console
+		server.messages.lockQueue();
+		while (!server.messages.empty()) {
+			TCPmessage const& new_message{ server.messages.read(0) };
+			switch (new_message.type) {
+			case TcpMsgType::SEND_CHAT_MESSAGE:
+				std::cout << new_message.playerName << ": " << new_message.message << std::endl;
+				break;
+			case TcpMsgType::CONNECTION_REQUEST:
+				std::cout << new_message.playerName << " s'est connecte." << std::endl;
+				playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+				break;
+			case TcpMsgType::DISCONNECTION_REQUEST:
+				std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
+				bool found{ false };
+				for (int i = 0; i < playersInfos.size(); i++) {
+					if (found = (playersInfos[i].id == new_message.playerID)) {
+						removeFromVector(playersInfos, i);
+						break;
+					}
+				}
+				if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
+				break;
+			}
+			server.messages.dequeue();
+		}
+		server.messages.unlockQueue();
+	}
+
 	void gameLoop() {
 		bool quit = false;
 		while (!quit) {
+			handleNetwork();
 			updateDeltaTime();
+
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player);
@@ -73,7 +120,11 @@ public:
 				detectStaticCollisions(players, plateforms);
 
 				applyMovement(players, deltaTime);//also apply gravity
+
+
 				renderingManager.render(players, plateforms);
+				scoreBoard.render(playersInfos);
+				renderingManager.endRendering();
 			}
 			else
 				SDL_Delay(lastTime + refreshTimeInterval * 1000 - currentTime);

@@ -7,6 +7,13 @@
 #include "ECS.h"
 #include "Game.h"
 #include "Components.h"
+#include "SDL_net.h"
+#include "Server.h"
+#include "Client.h"
+#include <map>
+#include <thread>
+#include "Containers.h"
+
 /*
 struct Velocity {
     int speed{};
@@ -76,19 +83,81 @@ void registerAllComponents() {
     ecs.registerComponent<VisibleObject>();
 }
 
+
+
+void testIterators() {
+    std::map<int, std::string> map;
+    map.emplace(1, "hugo");
+    map.emplace(2, "jean");
+    map.emplace(3, "pierre");
+
+    for (auto it{ map.begin() }; it != map.end(); ++it) {
+        std::string& nom{ it->second };
+        nom.push_back('X');
+    }
+
+    std::cout << map.find(1)->second << std::endl;
+    std::cout << map.find(2)->second << std::endl;
+}
+
+void testStrings() {
+    
+    char b[]{ "Salut les idiots !" };
+    char* ptr = b;
+    std::string str(ptr);
+    ptr[0] = 'X';
+    std::cout << "str: " << str << std::endl;
+    std::cout << "ptr: " << const_cast<const char*>(ptr) << std::endl;
+
+}
+
+void testCircularQueue() {
+    ConcurrentCircularQueue<int> q(4);
+    q.enqueue(1);
+    q.enqueue(2);
+    q.enqueue(3);
+   
+    q.enqueue(4);
+    q.enqueue(5);
+    q.enqueue(6);
+    //q.startReading();
+    q.read(0);
+    q.read(1);
+
+    q.enqueue(7);
+}
+
 int main(int argc, char* args[])
 {
 
     SDL_Init(SDL_INIT_VIDEO);
+    if (SDLNet_Init() == -1) {
+        std::cout << "SDLNet_Init: " << SDLNet_GetError << std::endl;
+        exit(2);
+    }
+    //testStrings();
+    //testIterators();
+    testCircularQueue();
+    
+    int choice = 1;
+    std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
+    std::cin >> choice;
+    if (choice == 1) {
+        registerAllComponents();
+        Game game{};
+        game.gameLoop();
+    }
+    else
+        Client client{};
 
    /* testCollisions();
     testGeometry();
     testECS();*/
-    registerAllComponents();
-    Game game{};
-    game.gameLoop();
+
+ 
 
     SDL_Quit();
+    SDLNet_Quit();
 
     return 0;
 }

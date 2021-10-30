@@ -5,23 +5,18 @@
 #include <vector>
 #include "Components.h"
 
-//les positions doivent etre flottantes ?
-struct Rect {
-    float x;
-    float y;
-    float w;
-    float h;
-};
 
 
-Vector2 worldToScreenCoords(Vector2 const& world_pos, Rect const& camera, const int screen_w, const int screen_h) {
+
+Vector2 worldToScreenCoords(Vector2 const& world_pos, SDL_FRect const& camera, const int screen_w, const int screen_h) {
 	Vector2 screen_pos;
+
 	screen_pos.x = (world_pos.x - camera.x) * float(screen_w) / camera.w;
 	screen_pos.y = (camera.y + camera.h - world_pos.y ) * float(screen_h) / camera.h;//axe des y inverse avec la SDL
 	return screen_pos;
 }
 
-SDL_Rect worldToScreenCoords(Rect world_rect, Rect const& camera, const int screen_w, const int screen_h) {
+SDL_Rect worldToScreenCoords(SDL_FRect world_rect, SDL_FRect const& camera, const int screen_w, const int screen_h) {
     SDL_Rect screen_rect;
     screen_rect.x = std::roundf((world_rect.x - camera.x) * float(screen_w) / camera.w);
     screen_rect.y = std::roundf((camera.y + camera.h - world_rect.y) * float(screen_h) / camera.h);//axe des y inverse avec la SDL
@@ -49,11 +44,12 @@ float quadraticDistance(SDL_Rect p, SDL_Rect q) {
 class Renderer {
 private:
     SDL_Window* win = NULL;
-    SDL_Renderer* renderer = NULL;
     SDL_Texture* textures[MAX_TEXTURES];
-    int window_w{800};
-    int window_h{600};
 public:
+    SDL_Renderer* renderer = NULL;
+    int window_w{ 800 };
+    int window_h{ 600 };
+
 
     void getNewWindowSize() {
         SDL_GetWindowSize(win, &window_w, &window_h);
@@ -63,7 +59,6 @@ public:
 
     Renderer() {
         SDL_Surface* surfaces[MAX_TEXTURES]{};
-
         win = SDL_CreateWindow("Foster Test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_w, window_h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
@@ -86,10 +81,11 @@ public:
     }
 	void render(ArrayList<EntityID> const& players, ArrayList<EntityID> const& plateforms)
     {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_Rect position{};
-        Rect position_world;
-        Rect camera{ 0.0f, 0.0f, 20.0f, 13.0f };
+        SDL_FRect position_world;
+        SDL_FRect camera{ 0.0f, 0.0f, 20.0f, 13.0f };
         const float maxDistanceFromRealPos = 2.0f * 2.0f; //quadratic distance to avoid square root calculus
         static SDL_Rect lastMove{ 0, 0, 0, 0 };
         //camera.x = players[0].position.x - camera.w/2.0f;
@@ -135,7 +131,9 @@ public:
 
         }
         
-        SDL_RenderPresent(renderer);
 	}
+    void endRendering() {
+        SDL_RenderPresent(renderer);
+    }
 
 };

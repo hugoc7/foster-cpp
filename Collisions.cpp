@@ -212,15 +212,15 @@ float collisionMovingSegmentWithSegment(Vector2  (&const movingSegment) [2], Vec
 
 
 void showRects(Vector2 (&const a)[4], Vector2 (&const b)[4]) {
-	std::cout << a[1] << " " << a[3] << "  --  " << b[1] << " " << b[3] << "\n";
-	std::cout << a[0] << " " << a[2] << "  --  " << b[0] << " " << b[2] << "\n\n\n";
+	//std::cout << a[1] << " " << a[3] << "  --  " << b[1] << " " << b[3] << "\n";
+	//std::cout << a[0] << " " << a[2] << "  --  " << b[0] << " " << b[2] << "\n\n\n";
 }
 
 void printCollidingSegments(Vector2(& const a)[2], Vector2(& const b)[2]) {
-	std::cout << "\ncollision: \n" << a[0] << " " << a[1] << "  --  " << b[0] << " " << b[1] << "\n";
+	//std::cout << "\ncollision: \n" << a[0] << " " << a[1] << "  --  " << b[0] << " " << b[1] << "\n";
 }
 void printTouchingSegments(Vector2 const& a, Vector2 const& b, Vector2 const& o, Vector2 const& p) {
-	std::cout << "\nglissement: \n" << a << " " << b << "  --  " << o << " " << p << "\n";
+	//std::cout << "\nglissement: \n" << a << " " << b << "  --  " << o << " " << p << "\n";
 }
 
 void detectStaticSliding(MovingObject& movingObject, BoxCollider const& movingCollider,

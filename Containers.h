@@ -157,3 +157,44 @@ public:
 		}
 	}
 };
+
+
+class UniqueByteArray {
+private:
+	char* data;//could be std::byte* ?
+public:
+	UniqueByteArray(size_t initialSize) : data{nullptr} {
+		data = reinterpret_cast<char*> (std::malloc(sizeof(char)*initialSize));
+		if (data == nullptr)
+			throw std::bad_alloc();
+	}
+	void realloc(size_t newSize) {
+		char* newPtr{ static_cast<char*>(std::realloc(data, sizeof(char)*newSize)) };
+		if (newPtr == nullptr) {
+			std::free(data);
+			throw std::bad_alloc();
+		}
+		data = newPtr;
+	}
+	char* get() const noexcept {
+		return data;
+	}
+
+	~UniqueByteArray() noexcept {
+		if (data != nullptr)//data can be nulltr if the object data has been moved
+			std::free(data);
+	}
+	UniqueByteArray(UniqueByteArray const& other) = delete;//remove cpy constructor
+	UniqueByteArray& operator=(UniqueByteArray const& other) = delete;//remove cpy assignment
+	UniqueByteArray(UniqueByteArray&& other) noexcept :
+		data{ std::move(other.data) }
+	{
+		other.data = nullptr;
+	}
+	UniqueByteArray& operator=(UniqueByteArray&& other) noexcept {
+		data = std::move(other.data);
+		other.data = nullptr;
+		return *this;
+	}
+
+};

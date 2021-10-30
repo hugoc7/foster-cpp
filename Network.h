@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <cassert>
+#include "Containers.h"
 
 std::string getIpAdressAsString(Uint32 ip);
 
@@ -20,28 +21,34 @@ enum class TcpMsgType {
 struct TCPmessage {
 	TcpMsgType type;
 	std::string message;//can be either a text message or a player name
-	int clientID;//client ID of the sender, identifying the socket
+	std::string playerName;
+	int playerID;//unique ID of a player related to this message (sender/receiver)
 
 	TCPmessage() = default;
 	TCPmessage(TCPmessage&& other) = default;
 
-
-	TCPmessage(std::unique_ptr<char[]> const& buffer, int bufferSize, int clientID) :
-		type{ static_cast<TcpMsgType>(SDLNet_Read16(buffer.get())) },
-		clientID{ clientID }
+	TCPmessage(TcpMsgType&& type, std::string&& playerName, int playerID) :
+		playerName{ std::move(playerName) },
+		type{ std::move(type) },
+		playerID{ playerID }
+	{
+	}
+	TCPmessage(UniqueByteArray const& buffer, int bufferSize) :
+		type{ static_cast<TcpMsgType>(SDLNet_Read16(buffer.get()+2)) }, playerID{playerID}
 	{
 		switch (type) {
 		case TcpMsgType::CONNECTION_REQUEST:
-			message.assign(buffer.get() + 2, bufferSize - 2);
+			playerName.assign(buffer.get() + 4, bufferSize - 4);
 			break;
 		case TcpMsgType::SEND_CHAT_MESSAGE:
-			message.assign(buffer.get() + 2, bufferSize - 2);
+			message.assign(buffer.get() + 4, bufferSize - 4);
 			break;
 		case TcpMsgType::DISCONNECTION_REQUEST:
 			//nothing
 			break;
 		default:
-			assert(false, "Invalid TCP message type");
+			std::cerr << "Invalid TCP message type\n";
+			throw std::runtime_error("Invalid TCP message type\n");
 		}
 	}
 	TCPmessage& operator=(const TCPmessage& other) = default; /*{

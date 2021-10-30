@@ -13,7 +13,7 @@ void sendStringToTCPsocket(TCPsocket tcpSock, std::string str) {
 	Uint16 size = str.size();
 	char* buffer = new char[size+2];
 	SDLNet_Write16((Uint16)size, buffer);
-	memcpy(buffer+2, str.c_str(), size);
+	std::memcpy(buffer+2, str.c_str(), size);
 	SDLNet_TCP_Send(tcpSock, buffer, size/2 + 2);
 	
 	std::this_thread::sleep_for(std::chrono::seconds{ 2 });
@@ -26,7 +26,7 @@ void sendTCPmsg(TCPsocket tcpSock, TcpMsgType type, std::string str) {
 
 	if (type == TcpMsgType::DISCONNECTION_REQUEST) {
 		char* buffer = new char[4];
-		SDLNet_Write16((Uint16)2, buffer);
+		SDLNet_Write16((Uint16)4, buffer);
 		SDLNet_Write16((Uint16)type, buffer + 2);
 		SDLNet_TCP_Send(tcpSock, buffer, 4);
 
@@ -40,12 +40,12 @@ void sendTCPmsg(TCPsocket tcpSock, TcpMsgType type, std::string str) {
 	else {
 
 		assert(str.size() < 65536 && str.size() <= MAX_TCP_PACKET_SIZE);
-		Uint16 size = str.size()+2;
-		char* buffer = new char[int(size) + 2];
+		Uint16 size = str.size()+4;
+		char* buffer = new char[int(size)];
 		SDLNet_Write16((Uint16)size, buffer);
 		SDLNet_Write16((Uint16)type, buffer + 2);
-		memcpy(buffer + 4, str.c_str(), str.size());
-		SDLNet_TCP_Send(tcpSock, buffer, size + 2);
+		std::memcpy(buffer + 4, str.c_str(), str.size());
+		SDLNet_TCP_Send(tcpSock, buffer, size);
 
 		/*SDLNet_TCP_Send(tcpSock, buffer, size / 2 + 2);
 
@@ -105,7 +105,7 @@ public:
 		while (input != "exit") {
 			
 			std::cout << "Enter message: ";
-			std::cin >> input;
+			std::getline(std::cin, input);
 			if (input != "exit")
 				sendTCPmsg(tcpSock, TcpMsgType::SEND_CHAT_MESSAGE, input);
 
