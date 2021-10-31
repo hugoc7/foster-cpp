@@ -56,63 +56,15 @@ void Server::closeConnection(int clientID) {
 
 ///@brief receive TCP messages from all clients (non blocking)
 void Server::receiveMessagesFromClients(std::vector<ClientConnection>& clients, ConcurrentCircularQueue<TCPmessage>& messages) {
-
 	//for each client
 	for (int i = 0; i < clients.size(); i++) {
-
-
-		if (!SDLNet_SocketReady(clients[i].tcpSocket)) continue;
-		int ret;
-		//if we already know the packet size
-		if (clients[i].bytesReceived >= 2) {
-			ret = SDLNet_TCP_Recv(clients[i].tcpSocket, clients[i].buffer.get() + clients[i].bytesReceived,
-				clients[i].packetSize - clients[i].bytesReceived);
-			if (ret == -1) {
-				std::cout << "Error in SDLNet_TCP_Recv: " << SDLNet_GetError() << std::endl;
-				closeConnection(i);
-				continue;
-			}
-			clients[i].bytesReceived += ret;
-		}
-
-		//if we dont know the packet size yet
-		else {
-			ret = SDLNet_TCP_Recv(clients[i].tcpSocket, clients[i].buffer.get() + clients[i].bytesReceived, 
-				clients[i].bufferSize - clients[i].bytesReceived);
-			if (ret == -1) {
-				std::cout << "Error in SDLNet_TCP_Recv: " << SDLNet_GetError() << std::endl;
-				closeConnection(i);
-				continue;
-			}
-			clients[i].bytesReceived += ret;
-
-			//if we have received the packet size header
-			if (clients[i].bytesReceived >= 2) {
-				clients[i].packetSize = (Uint16)SDLNet_Read16(clients[i].buffer.get());
-				//assert(clients[i].packetSize <= MAX_TCP_PACKET_SIZE, "The TCP packet is too big");
-				//assert(clients[i].bytesReceived <= clients[i].packetSize, "The TCP packet is too short");
-				if (clients[i].packetSize > MAX_TCP_PACKET_SIZE) {
-					std::cout << "The TCP packet is too big, closing connection.\n";
-					closeConnection(i);
-					continue;
-				}
-				if (clients[i].bytesReceived > clients[i].packetSize) {
-					std::cout << "The TCP packet is too short, closing connection.\n";
-					closeConnection(i);
-					continue;
-				}
-
-				//grow up the buffer if needed
-				if (clients[i].bufferSize < clients[i].packetSize) {
-					clients[i].bufferSize = clients[i].packetSize;
-					clients[i].buffer.realloc(clients[i].bufferSize);
-				}
+		try {
+			if (receivePacket(clients[i])) {
+				handleFullyReceivedPacket(i);
 			}
 		}
-		
-		//packet is fully received
-		if (clients[i].bytesReceived == clients[i].packetSize) {
-			handleFullyReceivedPacket(i);
+		catch (...) {
+			closeConnection(i);
 		}
 	}
 }
@@ -122,7 +74,7 @@ void Server::acceptNewConnection(TCPsocket listeningTcpSock) {
 	// accept a connection coming in on server_tcpsock
 	TCPsocket new_tcpsock{ NULL };
 
-	if (!SDLNet_SocketReady(listeningTcpSock)) return;
+	if (!SDLNet_SocketReady(listeningTcpSock)) return;//strange, it works but cheksockets have not been called yet
 	new_tcpsock = SDLNet_TCP_Accept(listeningTcpSock);
 	if (new_tcpsock != NULL) {
 
@@ -148,12 +100,7 @@ void Server::loop(TCPsocket listeningTcpSock, ConcurrentCircularQueue<TCPmessage
 		if (connections.size() < MAX_SOCKETS)
 			acceptNewConnection(listeningTcpSock);
 
-		if (SDLNet_CheckSockets(socketSet, 0) == -1 && connections.size() > 0) {
-			printf("SDLNet_CheckSockets: %s\n", SDLNet_GetError());
-			//most of the time this is a system error, where perror might help you.
-			perror("SDLNet_CheckSockets");
-			throw;
-		}
+		checkSockets(connections.size());
 
 		if (connections.size() > 0) {
 			receiveMessagesFromClients(connections, msgQueue);
@@ -173,7 +120,7 @@ void Server::stop() {
 		std::abort();
 	}
 	SDLNet_TCP_Close(listeningTcpSock);
-	SDLNet_FreeSocketSet(socketSet);
+	//SDLNet_FreeSocketSet(socketSet);
 }
 
 
@@ -184,12 +131,12 @@ void Server::start() {
 	IPaddress ip;
 
 
-	socketSet = SDLNet_AllocSocketSet(MAX_SOCKETS);
+	//socketSet = SDLNet_AllocSocketSet(MAX_SOCKETS);
 
-	if (!socketSet) {
+	/*if (!socketSet) {
 		printf("SDLNet_AllocSocketSet: %s\n", SDLNet_GetError());
 		exit(1); //most of the time this is a major error, but do what you want.
-	}
+	}*/
 
 	if (SDLNet_ResolveHost(&ip, NULL, 9999) == -1) {
 		std::cout << "SDLNet_ResolveHost: " << SDLNet_GetError() << std::endl;
@@ -201,6 +148,7 @@ void Server::start() {
 		std::cout << "SDLNet_TCP_Open: " << SDLNet_GetError() << std::endl;
 		exit(2);
 	}
+	//socketSet = SDLNet_AllocSocketSet(MAX_SOCKETS);
 	if (SDLNet_TCP_AddSocket(socketSet, listeningTcpSock) == -1) {
 		printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
 		// perhaps you need to restart the set and make it bigger...
@@ -213,12 +161,17 @@ void Server::start() {
 	thread = std::thread(&Server::loop, this, listeningTcpSock, std::ref(messages));
 }
 
-Server::Server() : messages(50) {
+Server::Server() : TCPNetworkNode(), messages(50) {
 	//start();
 }
 Server::~Server() {
 	stop();
 }
+
+void sendToAll(TCPmessage&& message) {
+
+}
+
 
 void dummy() {
 

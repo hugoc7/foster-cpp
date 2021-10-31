@@ -159,12 +159,11 @@ public:
 };
 
 
-class UniqueByteArray {
+class UniqueByteBuffer {
 private:
 	char* data;//could be std::byte* ?
 public:
-	UniqueByteArray(size_t initialSize) : data{nullptr} {
-		data = reinterpret_cast<char*> (std::malloc(sizeof(char)*initialSize));
+	UniqueByteBuffer(size_t initialSize) : data{ reinterpret_cast<char*> (std::malloc(sizeof(char) * initialSize)) } {
 		if (data == nullptr)
 			throw std::bad_alloc();
 	}
@@ -176,22 +175,28 @@ public:
 		}
 		data = newPtr;
 	}
+	void lossfulRealloc(size_t newSize) {
+		std::free(data);
+		data = reinterpret_cast<char*> (std::malloc(sizeof(char) * newSize));
+		if (data == nullptr)
+			throw std::bad_alloc();
+	}
 	char* get() const noexcept {
 		return data;
 	}
 
-	~UniqueByteArray() noexcept {
+	~UniqueByteBuffer() noexcept {
 		if (data != nullptr)//data can be nulltr if the object data has been moved
 			std::free(data);
 	}
-	UniqueByteArray(UniqueByteArray const& other) = delete;//remove cpy constructor
-	UniqueByteArray& operator=(UniqueByteArray const& other) = delete;//remove cpy assignment
-	UniqueByteArray(UniqueByteArray&& other) noexcept :
+	UniqueByteBuffer(UniqueByteBuffer const& other) = delete;//remove cpy constructor
+	UniqueByteBuffer& operator=(UniqueByteBuffer const& other) = delete;//remove cpy assignment
+	UniqueByteBuffer(UniqueByteBuffer&& other) noexcept :
 		data{ std::move(other.data) }
 	{
 		other.data = nullptr;
 	}
-	UniqueByteArray& operator=(UniqueByteArray&& other) noexcept {
+	UniqueByteBuffer& operator=(UniqueByteBuffer&& other) noexcept {
 		data = std::move(other.data);
 		other.data = nullptr;
 		return *this;

@@ -33,7 +33,7 @@ struct TCPmessage {
 		playerID{ playerID }
 	{
 	}
-	TCPmessage(UniqueByteArray const& buffer, int bufferSize) :
+	TCPmessage(UniqueByteBuffer const& buffer, int bufferSize) :
 		type{ static_cast<TcpMsgType>(SDLNet_Read16(buffer.get()+2)) }, playerID{playerID}
 	{
 		switch (type) {

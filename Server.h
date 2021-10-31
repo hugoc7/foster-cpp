@@ -11,86 +11,36 @@
 #include "Network.h"
 #include <atomic>
 #include <functional>
+#include "TCPNetworkNode.h"
 
-struct ClientConnection {
-	TCPsocket tcpSocket{ NULL };
-	SDLNet_SocketSet socketSet{ NULL };
+struct ClientConnection : TCPConnection {
 	std::string playerName;
 	bool connectedToGame{ false };//a client is "connected to game" from a new player request until a disconnection request  
-	
-	UniqueByteArray buffer;
-	int bufferSize;//buffer size MUST always be >= 4
-	int bytesReceived{ 0 };
-	Uint16 packetSize{0};//0 is a special value which means we dont know the size of the packet yet
 	int playerID{-1};
 
 
-	ClientConnection(TCPsocket tcpSocket, SDLNet_SocketSet socketSet) :
-		tcpSocket{ tcpSocket }, bufferSize{ 30 }, buffer(30), socketSet{ socketSet } {
-
-		if (SDLNet_TCP_AddSocket(socketSet, tcpSocket) == -1) {
-			printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
-			// perhaps you need to restart the set and make it bigger...
-			throw std::bad_alloc();//TODO: make a custom exception for SDL_Net errors
-		}
+	ClientConnection(TCPsocket tcpSocket, SDLNet_SocketSet socketSet) : TCPConnection(tcpSocket, socketSet) {
 	}
+
 	ClientConnection(ClientConnection&& other) noexcept :
-		tcpSocket{ std::move(other.tcpSocket) },
-		buffer{ std::move(other.buffer) },
-		bufferSize{ std::move(other.bufferSize) },
-		bytesReceived{ std::move(other.bytesReceived) },
-		packetSize{ std::move(other.packetSize) },
+		TCPConnection(std::move(other)),
 		playerName{ std::move(other.playerName) },
-		socketSet{ std::move(other.socketSet) },
 		connectedToGame{other.connectedToGame},
 		playerID{other.playerID}
 	{
-		other.tcpSocket = NULL;
-		other.socketSet = NULL;
 	}
 	ClientConnection& operator=(ClientConnection&& other) noexcept {
-		tcpSocket = std::move(other.tcpSocket);
-		buffer = std::move(other.buffer);
-		bufferSize = std::move(other.bufferSize);
-		bytesReceived = std::move(other.bytesReceived);
-		packetSize = std::move(other.packetSize);
+		TCPConnection::operator=(std::move(other));
 		playerName = std::move(other.playerName);
-		socketSet = std::move(other.socketSet);
 		connectedToGame = other.connectedToGame;
 		playerID = other.playerID;
-		other.tcpSocket = NULL;
-		other.socketSet = NULL;
 		return *this;
-	}
-	
-	void close() {
-		//remove the socket form the socket set
-		if (SDLNet_TCP_DelSocket(socketSet, tcpSocket) == -1) {
-			printf("SDLNet_DelSocket: %s\n", SDLNet_GetError());
-			// perhaps the socket is not in the set
-			exit(1);//TODO: make a custom exception for SDL_Net errors
-		}
-		SDLNet_TCP_Close(tcpSocket);	
-		tcpSocket = NULL;
-	}
-	~ClientConnection() {
-		if (tcpSocket != NULL) {
-			if (socketSet != NULL) {
-				//remove the socket form the socket set
-				if (SDLNet_TCP_DelSocket(socketSet, tcpSocket) == -1) {
-					printf("SDLNet_DelSocket: %s\n", SDLNet_GetError());
-					// perhaps the socket is not in the set
-					exit(1);//TODO: make a custom exception for SDL_Net errors
-				}
-			}
-			SDLNet_TCP_Close(tcpSocket);
-		}
 	}
 	
 };
 
 
-class Server {
+class Server : TCPNetworkNode {
 public:
 	std::vector<ClientConnection> connections;
 	std::chrono::milliseconds delayForNewConnection{ 500 };
@@ -100,8 +50,8 @@ public:
 	std::thread thread{};
 	std::atomic<bool> serverRunning{ false };
 	TCPsocket listeningTcpSock{ NULL };
-	SDLNet_SocketSet socketSet{ NULL };
-	const int MAX_SOCKETS{16};
+	//SDLNet_SocketSet socketSet{ NULL };
+	//const int MAX_SOCKETS{16};
 
 	///@brief receive TCP messages from all clients (non blocking)
 	void receiveMessagesFromClients(std::vector<ClientConnection>& clients, ConcurrentCircularQueue<TCPmessage>& messages);
@@ -113,6 +63,8 @@ public:
 	void stop();
 
 	void start();
+
+	//void sendToAll(TCPmessage&& message);
 
 	Server();
 	~Server();
