@@ -30,8 +30,13 @@ public:
 		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
 	}
 
+	void reloadFont() {
+		FC_ClearFont(font);
+		//font = FC_CreateFont();
+		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
+	}
 
-	void render(std::vector<PlayerInfos> const& playerInfos) {
+	void render(std::vector<PlayerInfos> const& playerInfos, std::string const& myName) {
 		//center the score board in the screen
 		position.x = renderer.window_w / 2 - position.w / 2;
 		position.y = renderer.window_h / 2 - position.h / 2;
@@ -41,7 +46,9 @@ public:
 		SDL_RenderFillRect(renderer.renderer, &position);
 
 		scoreText.clear();
-		scoreText += "    - SCORE BOARD -\n\n";
+		scoreText += "    - SCORE BOARD (";
+		scoreText += myName;
+		scoreText += ") -\n\n";
 		for (int i = 0; i < playerInfos.size(); i++) {
 			scoreText += std::to_string(playerInfos[i].id) + " : ";
 			scoreText += playerInfos[i].name;

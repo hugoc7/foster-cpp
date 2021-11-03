@@ -142,13 +142,11 @@ int main(int argc, char* args[])
     int choice = 1;
     std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
     std::cin >> choice;
-    if (choice == 1) {
-        registerAllComponents();
-        Game game{};
-        game.gameLoop();
-    }
-    else
-        Client client{};
+    
+    registerAllComponents();
+    Game game(choice == 1);
+    game.gameLoop();
+ 
 
    /* testCollisions();
     testGeometry();

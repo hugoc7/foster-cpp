@@ -19,13 +19,23 @@ struct TCPConnection {
 	TCPsocket tcpSocket{ NULL };
 	SDLNet_SocketSet socketSet{ NULL };
 	UniqueByteBuffer buffer;
-	int bufferSize;//buffer size MUST always be >= 4
+	int bufferSize{ 30 };//buffer size MUST always be >= 4
 	int bytesReceived{ 0 };
 	Uint16 packetSize{ 0 };//0 is a special value which means we dont know the size of the packet yet
 
+	TCPConnection() : buffer(30) {};
+
+	void setSocket(TCPsocket arg_tcpSocket, SDLNet_SocketSet arg_socketSet) {
+		tcpSocket = arg_tcpSocket;
+		socketSet = arg_socketSet;
+		if (SDLNet_TCP_AddSocket(socketSet, tcpSocket) == -1) {
+			printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
+			throw std::bad_alloc();//TODO: make a custom exception for SDL_Net errors
+		}
+	}
 
 	TCPConnection(TCPsocket tcpSocket, SDLNet_SocketSet socketSet) :
-		tcpSocket{ tcpSocket }, bufferSize{ 30 }, buffer(30), socketSet{ socketSet } {
+		tcpSocket{ tcpSocket }, buffer(30), socketSet{ socketSet } {
 
 		if (SDLNet_TCP_AddSocket(socketSet, tcpSocket) == -1) {
 			printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
@@ -86,7 +96,6 @@ struct TCPConnection {
 
 };
 
-/* TODO: this class shouldnt be movable nor copyable (maybe move can be implemented later ...)*/
 class TCPNetworkNode {
 protected:
 	SDLNet_SocketSet socketSet{ NULL };
@@ -104,9 +113,14 @@ public:
 		SDLNet_FreeSocketSet(socketSet);
 	}
 
+	TCPNetworkNode(TCPNetworkNode const&) = delete;
+	TCPNetworkNode(TCPNetworkNode &&) = delete;
+	TCPNetworkNode& operator=(TCPNetworkNode const&) = delete;
+	TCPNetworkNode& operator=(TCPNetworkNode&&) = delete;
+
 	//return true if the packet has been fully sent
 	bool sendPacket(TCPConnection const& connection, UniqueByteBuffer const& buffer, int size) const noexcept {
-		assert(size < 65536 && size <= MAX_TCP_PACKET_SIZE);
+		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
 		return (SDLNet_TCP_Send(connection.tcpSocket, buffer.get(), size) == size);
 	}
 
@@ -123,6 +137,7 @@ public:
 
 	//return true if the packet is fully received
 	//throw if an error occured, if so the connection should be closed
+	//TODO: make this method member of TCPConnection !
 	bool receivePacket(TCPConnection& connection) const {
 		if (!SDLNet_SocketReady(connection.tcpSocket)) 
 			return false;

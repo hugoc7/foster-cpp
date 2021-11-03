@@ -10,7 +10,8 @@
 #include <fstream>
 #include "Server.h"
 #include "ScoreBoard.h"
-
+#include "Client.h"
+#include <iostream>
 
 
 class Game {
@@ -31,6 +32,9 @@ private:
 	//Network
 	std::vector<PlayerInfos> playersInfos;
 	Server server;
+	Client client;
+	bool isHost;
+	std::string myName;
 
 	//GUI
 	ScoreBoard scoreBoard;
@@ -38,7 +42,8 @@ private:
 
 
 public:
-	Game() : 
+	Game(bool isHost) :
+		isHost{ isHost },
 		renderingManager(),
 		scoreBoard(renderingManager)
 	{
@@ -57,7 +62,14 @@ public:
 		plateformColliders.emplace_back(3.0f, 1.0f);*/
 
 		//Network
-		server.start();
+		if(isHost) {
+			server.start();
+		}
+		else {
+			std::cout << "\nEnter YOUR NAME: ";
+			std::cin >> myName;
+			client.start(myName);
+		}
 	}
 	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
 		std::ifstream file(filename);
@@ -76,32 +88,77 @@ public:
 
 	void handleNetwork() {
 		//Show chat messages in the console
-		server.messages.lockQueue();
-		while (!server.messages.empty()) {
-			TCPmessage const& new_message{ server.messages.read(0) };
-			switch (new_message.type) {
-			case TcpMsgType::SEND_CHAT_MESSAGE:
-				std::cout << new_message.playerName << ": " << new_message.message << std::endl;
-				break;
-			case TcpMsgType::CONNECTION_REQUEST:
-				std::cout << new_message.playerName << " s'est connecte." << std::endl;
-				playersInfos.emplace_back(new_message.playerName, new_message.playerID);
-				break;
-			case TcpMsgType::DISCONNECTION_REQUEST:
-				std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
-				bool found{ false };
-				for (int i = 0; i < playersInfos.size(); i++) {
-					if (found = (playersInfos[i].id == new_message.playerID)) {
-						removeFromVector(playersInfos, i);
-						break;
+		bool found{ false };
+		if (isHost) {
+			server.messages.lockQueue();
+			while (!server.messages.empty()) {
+
+				TCPmessage const& new_message{ server.messages.read(0) };
+				switch (new_message.type) {
+					//MESSAGE RECEIVED BY SERVER
+				case TcpMsgType::SEND_CHAT_MESSAGE:
+					std::cout << new_message.playerName << ": " << new_message.message << std::endl;
+					break;
+				case TcpMsgType::CONNECTION_REQUEST:
+					std::cout << new_message.playerName << " s'est connecte." << std::endl;
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+					break;
+				case TcpMsgType::DISCONNECTION_REQUEST:
+					std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
+					found = false;
+					for (int i = 0; i < playersInfos.size(); i++) {
+						if (found = (playersInfos[i].id == new_message.playerID)) {
+							removeFromVector(playersInfos, i);
+							break;
+						}
 					}
+					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
+					break;
 				}
-				if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
-				break;
+				server.messages.dequeue();
 			}
-			server.messages.dequeue();
+			server.messages.unlockQueue();
 		}
-		server.messages.unlockQueue();
+		else {
+			client.receivedMessages.lockQueue();
+			while (!client.receivedMessages.empty()){
+
+				//TODO: move message content instead of copying them
+				//for this we need a moody camel queue for all msg + a cirular queue for text messgaes only
+				TCPmessage const& new_message{ client.receivedMessages.read(0) };
+				
+				switch (new_message.type) {
+					//MESSAGE RECEIVED BY CLIENT
+				case TcpMsgType::NEW_CONNECTION:
+					std::cout << new_message.playerName << " s'est connecte." << std::endl;
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+					break;
+				case TcpMsgType::NEW_DISCONNECTION:
+					found = false;
+					for (int i = 0; i < playersInfos.size(); i++) {
+						if (found = (playersInfos[i].id == new_message.playerID)) {
+							std::cout << playersInfos[i].name << " s'est deconnecte." << std::endl;
+							removeFromVector(playersInfos, i);
+							break;
+						}
+					}
+					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
+					break;
+				case TcpMsgType::PLAYER_LIST:
+					playersInfos.clear();
+					std::cout << "New player list received: \n";
+					assert(new_message.playerIDs.size() == new_message.playerNames.size());
+					for (int i = 0; i < new_message.playerIDs.size(); i++) {
+						std::cout << new_message.playerIDs[i] << " : " << new_message.playerNames[i] << std::endl;
+						playersInfos.emplace_back(new_message.playerNames[i], new_message.playerIDs[i]);
+					}
+					std::cout << "=================" << std::endl;
+					break;
+				}
+				client.receivedMessages.dequeue();
+			}
+			client.receivedMessages.unlockQueue();
+		}
 	}
 
 	void gameLoop() {
@@ -112,7 +169,7 @@ public:
 
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
-				handleInputs(quit, renderingManager, player);
+				handleInputs(quit, renderingManager, player, scoreBoard);
 				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
@@ -123,7 +180,7 @@ public:
 
 
 				renderingManager.render(players, plateforms);
-				scoreBoard.render(playersInfos);
+				scoreBoard.render(playersInfos, myName);
 				renderingManager.endRendering();
 			}
 			else
@@ -138,7 +195,7 @@ public:
 	};
 
 	///@brief une classe sera dedicasse a la gestion d'evenements
-	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID) {
+	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID, ScoreBoard& scoreBoard) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
 		MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
@@ -170,6 +227,7 @@ public:
 			break;
 			case SDL_WINDOWEVENT:
 				renderer.getNewWindowSize();
+				scoreBoard.reloadFont();
 				break;
 			case SDL_KEYDOWN:
 				if (e.key.keysym.sym == SDLK_UP)

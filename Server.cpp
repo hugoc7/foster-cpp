@@ -25,7 +25,10 @@ void Server::handleFullyReceivedPacket(int clientID) {
 				connections[clientID].connectedToGame = true;
 				connections[clientID].playerID = generatePlayerID();
 				newMessage.playerID = connections[clientID].playerID;
+				sendPlayerList(connections[clientID]);
+				sendNewPlayerNotification(connections[clientID]);
 				break;
+
 			case TcpMsgType::SEND_CHAT_MESSAGE:
 				newMessage.playerName = connections[clientID].playerName;
 				assert(connections[clientID].playerID >= 0);
@@ -42,6 +45,7 @@ void Server::handleFullyReceivedPacket(int clientID) {
 }
 
 void Server::closeConnection(int clientID) {
+	Uint16 playerID{ connections[clientID].playerID };
 	if (connections[clientID].connectedToGame) {
 		TCPmessage disconnectionMsg(TcpMsgType::DISCONNECTION_REQUEST, 
 			std::move(connections[clientID].playerName), connections[clientID].playerID);
@@ -52,6 +56,7 @@ void Server::closeConnection(int clientID) {
 	}
 	connections[clientID].close();//close the socket
 	removeFromVector(connections, clientID);
+	sendPlayerDisconnectionNotification(playerID);
 }
 
 ///@brief receive TCP messages from all clients (non blocking)
@@ -161,7 +166,7 @@ void Server::start() {
 	thread = std::thread(&Server::loop, this, listeningTcpSock, std::ref(messages));
 }
 
-Server::Server() : TCPNetworkNode(), messages(50) {
+Server::Server() : TCPNetworkNode(), messages(50), buffer(4), bufferSize{ 4 } {
 	//start();
 }
 Server::~Server() {
