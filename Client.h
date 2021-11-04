@@ -13,7 +13,7 @@
 class Client : TCPNetworkNode {
 public:
 	TCPConnection connectionToServer;
-	ConcurrentCircularQueue<TCPmessage> receivedMessages;
+	moodycamel::ReaderWriterQueue<TCPmessage> receivedMessages;
 	std::thread thread{};
 	std::atomic<bool> clientRunning{ false };
 	UniqueByteBuffer buffer;
@@ -65,13 +65,13 @@ public:
 	}
 
 	void receiveMsg() {
-		try {
+		//try {
 			if (receivePacket(connectionToServer)) {
 
 				//interpret the buffer content to create a msg object
 				TCPmessage newMessage(connectionToServer.buffer, connectionToServer.packetSize);
-
-				switch (newMessage.type) {
+				receivedMessages.enqueue(std::move(newMessage));
+				/*switch (newMessage.type) {
 				case TcpMsgType::NEW_CONNECTION:
 					receivedMessages.lockQueue();
 					receivedMessages.enqueue(std::move(newMessage));
@@ -88,13 +88,13 @@ public:
 					receivedMessages.unlockQueue();
 					break;
 				case TcpMsgType::NEW_CHAT_MESSAGE:
+					receivedMessages.lockQueue();
+					receivedMessages.enqueue(std::move(newMessage));
+					receivedMessages.unlockQueue();
 					break;
-				}
+				}*/
 			}
-		}
-		catch (...) {
-			closeConnection();
-		}
+		
 	}
 
 	/*void sendDisconnectRequest() {
@@ -155,19 +155,33 @@ public:
 		sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::CONNECTION_REQUEST, playerName);
 		isConnected = true;
 		input = "";
-		while (input != "exit" && clientRunning) {
-			//receive 
-			checkSockets(1);
-			receiveMsg();
-			
-			//send
-			std::cout << "Enter message: ";
-			std::getline(std::cin, input);
-			if (input != "exit" && !input.empty())
-				sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::SEND_CHAT_MESSAGE, input);
+		int k = 5000;
+		try {
+			while (input != "exit" && clientRunning) {
+				//receive 
+				checkSockets(1);
+				receiveMsg();
+
+				//send
+				//std::cout << "Enter message: ";
+				//std::getline(std::cin, input);
+				//if (input != "exit" && !input.empty())
+				//std::this_thread::sleep_for(std::chrono::seconds{ 1 });
+
+				//TODO: here if we sleep (block thread) for 1 sec it crashes ... why ?
+				if (--k <= 0) {
+					sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::SEND_CHAT_MESSAGE, 
+						std::string("Hey ! What's up man ! I really want to make a long sentance because sometimes it crashes"));
+					k = 1000;
+				}
+			}
+			std::cout << "Bye !" << std::endl;
+			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
 		}
-		std::cout << "Bye !" << std::endl;
-		sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
+		catch (std::exception const& e) {
+			std::cerr << e.what() << std::endl;
+			closeConnection();
+		}
 
 		std::this_thread::sleep_for(std::chrono::seconds{ 2 });
 	}
@@ -177,9 +191,11 @@ public:
 	}
 
 	~Client() {
+		stop();
 	}
 
 	void stop() {
+		if (!clientRunning) return;
 		clientRunning = false;//std::atomic is noexcept
 		thread.join();
 		connectionToServer.close();

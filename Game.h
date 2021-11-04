@@ -12,7 +12,7 @@
 #include "ScoreBoard.h"
 #include "Client.h"
 #include <iostream>
-
+#include "ChatWindow.h"
 
 class Game {
 private:
@@ -38,6 +38,7 @@ private:
 
 	//GUI
 	ScoreBoard scoreBoard;
+	ChatWindow chatWindow;
 
 
 
@@ -45,7 +46,8 @@ public:
 	Game(bool isHost) :
 		isHost{ isHost },
 		renderingManager(),
-		scoreBoard(renderingManager)
+		scoreBoard(renderingManager),
+		chatWindow(renderingManager)
 	{
 		player = ecs.addEntity();
 		ecs.addComponent<MovingObject>(player, 4.5, 7);
@@ -61,15 +63,7 @@ public:
 		plateforms.emplace_back(9.5f, 5.5f);
 		plateformColliders.emplace_back(3.0f, 1.0f);*/
 
-		//Network
-		if(isHost) {
-			server.start();
-		}
-		else {
-			std::cout << "\nEnter YOUR NAME: ";
-			std::cin >> myName;
-			client.start(myName);
-		}
+		
 	}
 	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
 		std::ifstream file(filename);
@@ -86,25 +80,31 @@ public:
 		}
 	}
 
-	void handleNetwork() {
+	void handleNetwork(ChatWindow& chatWindow) {
 		//Show chat messages in the console
 		bool found{ false };
 		if (isHost) {
-			server.messages.lockQueue();
-			while (!server.messages.empty()) {
+			//server.messages.lockQueue();
+			TCPmessage new_message;
+			while (server.messages.try_dequeue(new_message)){//!server.messages.empty()) {
 
-				TCPmessage const& new_message{ server.messages.read(0) };
+				//TCPmessage const& new_message{ server.messages.read(0) };
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
 				case TcpMsgType::SEND_CHAT_MESSAGE:
 					std::cout << new_message.playerName << ": " << new_message.message << std::endl;
+					chatWindow.messages.enqueue(new_message.playerName + ": " + new_message.message);
 					break;
+
 				case TcpMsgType::CONNECTION_REQUEST:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
+					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
 					break;
+
 				case TcpMsgType::DISCONNECTION_REQUEST:
 					std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
+					chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
 					found = false;
 					for (int i = 0; i < playersInfos.size(); i++) {
 						if (found = (playersInfos[i].id == new_message.playerID)) {
@@ -115,35 +115,48 @@ public:
 					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
 					break;
 				}
-				server.messages.dequeue();
+				//server.messages.dequeue();
 			}
-			server.messages.unlockQueue();
+			//.unlockQueue();
 		}
 		else {
-			client.receivedMessages.lockQueue();
-			while (!client.receivedMessages.empty()){
+			TCPmessage new_message;
+			while (client.receivedMessages.try_dequeue(new_message)){
 
 				//TODO: move message content instead of copying them
 				//for this we need a moody camel queue for all msg + a cirular queue for text messgaes only
-				TCPmessage const& new_message{ client.receivedMessages.read(0) };
-				
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY CLIENT
 				case TcpMsgType::NEW_CONNECTION:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					break;
+
+				case TcpMsgType::NEW_CHAT_MESSAGE:
+					found = false;
+					for (int i = 0; i < playersInfos.size(); i++) {
+						if (found = (playersInfos[i].id == new_message.playerID)) {
+							std::cout << playersInfos[i].name << " : " << new_message.message << std::endl;
+							chatWindow.messages.enqueue(playersInfos[i].name + " : " + new_message.message);
+							break;
+						}
+					}
+					if (!found) std::cerr << "\nPlayer ID not found, receiving chat message failed";
+					break;
+
 				case TcpMsgType::NEW_DISCONNECTION:
 					found = false;
 					for (int i = 0; i < playersInfos.size(); i++) {
 						if (found = (playersInfos[i].id == new_message.playerID)) {
 							std::cout << playersInfos[i].name << " s'est deconnecte." << std::endl;
-							removeFromVector(playersInfos, i);
+							chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
 							break;
 						}
 					}
 					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
 					break;
+
 				case TcpMsgType::PLAYER_LIST:
 					playersInfos.clear();
 					std::cout << "New player list received: \n";
@@ -155,21 +168,30 @@ public:
 					std::cout << "=================" << std::endl;
 					break;
 				}
-				client.receivedMessages.dequeue();
 			}
-			client.receivedMessages.unlockQueue();
 		}
 	}
 
 	void gameLoop() {
 		bool quit = false;
+		//Network
+		if (isHost) {
+			server.start();
+		}
+		else {
+			std::cout << "\nEnter YOUR NAME: ";
+			std::cin >> myName;
+			client.start(myName);
+
+		}
+
 		while (!quit) {
-			handleNetwork();
+			handleNetwork(chatWindow);
 			updateDeltaTime();
 
 			if (deltaTime >= refreshTimeInterval) {
 				lastTime = currentTime;
-				handleInputs(quit, renderingManager, player, scoreBoard);
+				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);
 				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
@@ -181,21 +203,24 @@ public:
 
 				renderingManager.render(players, plateforms);
 				scoreBoard.render(playersInfos, myName);
+				chatWindow.render();
 				renderingManager.endRendering();
 			}
 			else
 				SDL_Delay(lastTime + refreshTimeInterval * 1000 - currentTime);
 			
 		}
+		//Close Network threads
+		server.stop();
+		client.stop();
 	};
-		
 	void updateDeltaTime() {
 		currentTime = SDL_GetTicks();
 		deltaTime = float(currentTime - lastTime) / 1000.0f;
 	};
 
 	///@brief une classe sera dedicasse a la gestion d'evenements
-	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID, ScoreBoard& scoreBoard) {
+	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID, ScoreBoard& scoreBoard, ChatWindow& chatWin) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
 		MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
@@ -228,6 +253,7 @@ public:
 			case SDL_WINDOWEVENT:
 				renderer.getNewWindowSize();
 				scoreBoard.reloadFont();
+				chatWin.reloadFont();
 				break;
 			case SDL_KEYDOWN:
 				if (e.key.keysym.sym == SDLK_UP)

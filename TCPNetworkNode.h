@@ -148,10 +148,8 @@ public:
 			ret = SDLNet_TCP_Recv(connection.tcpSocket, connection.buffer.get() + connection.bytesReceived, 
 				connection.packetSize - connection.bytesReceived);
 			if (ret == -1) {
-				std::string errorMsg{ "Error in SDLNet_TCP_Recv: " };
-				errorMsg += SDLNet_GetError();
-				std::cerr << errorMsg << std::endl;
-				throw std::runtime_error(errorMsg);//todo: create an exception
+				//todo: create an exception
+				throw std::runtime_error(std::string("Error in SDLNet_TCP_Recv (1): ") + SDLNet_GetError());
 			}
 			connection.bytesReceived += ret;
 		}
@@ -161,10 +159,8 @@ public:
 			ret = SDLNet_TCP_Recv(connection.tcpSocket, connection.buffer.get() + connection.bytesReceived, 
 				connection.bufferSize - connection.bytesReceived);
 			if (ret == -1) {
-				std::string errorMsg{ "Error in SDLNet_TCP_Recv: " };
-				errorMsg += SDLNet_GetError();
-				std::cerr << errorMsg << std::endl;
-				throw std::runtime_error(errorMsg);//todo: create an exception class
+				//todo: create an exception class
+				throw std::runtime_error(std::string{ "Error in SDLNet_TCP_Recv (2): " } + SDLNet_GetError());
 			}
 			connection.bytesReceived += ret;
 
@@ -172,11 +168,9 @@ public:
 			if (connection.bytesReceived >= 2) {
 				connection.packetSize = (Uint16)SDLNet_Read16(connection.buffer.get());
 				if (connection.packetSize > MAX_TCP_PACKET_SIZE) {
-					std::cerr << "The TCP packet is too big, closing connection.\n";
 					throw std::runtime_error("The TCP packet is too big, closing connection");//todo: create an exception
 				}
 				if (connection.bytesReceived > connection.packetSize) {
-					std::cerr << "The TCP packet is too short, closing connection.\n";
 					throw std::runtime_error("The TCP packet is too big, closing connection");//todo: create an exception
 				}
 

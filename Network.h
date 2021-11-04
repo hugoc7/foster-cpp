@@ -57,10 +57,11 @@ struct TCPmessage {
 		type{ std::move(type) }
 	{
 	}
-	TCPmessage(UniqueByteBuffer const& buffer, int bufferSize) :
-		type{ static_cast<TcpMsgType>(SDLNet_Read16(buffer.get()+2)) }
+	TCPmessage(UniqueByteBuffer const& buffer, int bufferSize)
 	{
-
+		if (bufferSize < 4)
+			throw std::runtime_error("Received invalid TCP message: no type");
+		type = static_cast<TcpMsgType>(SDLNet_Read16(buffer.get() + 2));
 		unsigned int currentByteIndex{ 4 };
 
 		switch (type) {
@@ -74,11 +75,21 @@ struct TCPmessage {
 			//nothing
 			break;
 		case TcpMsgType::NEW_CONNECTION:
+			if (bufferSize < 6)
+				throw std::runtime_error("Received invalid TCP message (NEW_CONNECTION) : no player ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
 			playerName.assign(buffer.get() + 6, bufferSize - 6u);
 			break;
 		case TcpMsgType::NEW_DISCONNECTION:
+			if (bufferSize < 6)
+				throw std::runtime_error("Received invalid TCP message (NEW_DISCONNECTION) : no player ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
+			break;
+		case TcpMsgType::NEW_CHAT_MESSAGE:
+			if (bufferSize < 6)
+				throw std::runtime_error("Received invalid TCP message (NEW_CHAT_MESSAGE) : no player ID");
+			playerID = SDLNet_Read16(buffer.get() + 4);
+			message.assign(buffer.get() + 6, bufferSize - 6u);
 			break;
 		case TcpMsgType::PLAYER_LIST:
 			//PACKET SCHEMA (unit = byte)
@@ -103,7 +114,6 @@ struct TCPmessage {
 			}
 			break;
 		default:
-			std::cerr << "Invalid TCP message type\n";
 			throw std::runtime_error("Invalid TCP message type\n");
 		}
 	}

@@ -113,7 +113,7 @@ public:
 	void lockQueue() {
 		lock.lock();
 	}
-	void length() const {
+	int length() const {
 		int len = (tail - head + 1) % v.size();
 		if (len < 0)
 			len += v.size();
@@ -129,7 +129,7 @@ public:
 
 	//index should be between 0 and maxElements-1
 	//MUST not be called before startReading (in the same thread)
-	T const& read(int relativeIndexToRead) {
+	T const& read(int relativeIndexToRead) const {
 		//readerIndex.store((relativeIndexToRead + head) % v.size());
 		//block while another thread is writing at the same index
 		//while (writerIndex.load() == readerIndex.load()) {};
@@ -158,6 +158,59 @@ public:
 	}
 };
 
+
+template<typename T>
+class CircularQueue {
+private:
+	std::vector<T> v;
+	//queue empty <=> head = tail
+	//queue full <=> head = tail + 1 (mod n)
+	int head{ 0 };
+	int tail{ 0 };
+public:
+
+
+	CircularQueue(size_t maxElements) : v(maxElements + 1u) {
+	}
+	CircularQueue() = delete;
+	int length() const {
+		if (head <= tail) {
+			return tail - head;
+		}
+		else {
+			return v.size() - head + tail;
+		}
+	}
+	inline bool empty() const noexcept {
+		return head == tail;
+	}
+	inline bool full() const {
+		return (head == (tail + 1) % v.size());
+	}
+
+	T const& read(int relativeIndexToRead) const {
+		int realIndex = (relativeIndexToRead + head) % v.size();
+		assert(realIndex >= 0 && realIndex < v.size());
+		return v[realIndex];
+	}
+	//will delete head element if max size is reached
+	void enqueue(T&& elementToEnq) {
+		if (full()) {
+			dequeue();
+		}
+		assert(tail >= 0 && tail < v.size(), "enqueue");
+		v[tail] = std::forward<T>(elementToEnq);
+		tail = (tail + 1) % v.size();
+		assert(tail >= 0 && tail < v.size(), "enqueue");
+
+	}
+	void dequeue() {
+		//if queue is not empty
+		if (!empty()) {
+			head = (head + 1) % v.size();
+		}
+	}
+};
 
 class UniqueByteBuffer {
 private:

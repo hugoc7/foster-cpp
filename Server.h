@@ -45,8 +45,8 @@ public:
 	std::vector<ClientConnection> connections;
 	std::chrono::milliseconds delayForNewConnection{ 500 };
 	//moodycamel::ReaderWriterQueue<TCPmessage> messages;//concurrent queue
-	moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;//concurrent queue
-	ConcurrentCircularQueue<TCPmessage> messages;
+	//moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;//concurrent queue
+	moodycamel::ReaderWriterQueue<TCPmessage> messages;
 	std::thread thread{};
 	std::atomic<bool> serverRunning{ false };
 	TCPsocket listeningTcpSock{ NULL };
@@ -58,11 +58,11 @@ public:
 	//const int MAX_SOCKETS{16};
 
 	///@brief receive TCP messages from all clients (non blocking)
-	void receiveMessagesFromClients(std::vector<ClientConnection>& clients, ConcurrentCircularQueue<TCPmessage>& messages);
+	void receiveMessagesFromClients(std::vector<ClientConnection>& clients, moodycamel::ReaderWriterQueue<TCPmessage>& messages);
 
 	void acceptNewConnection(TCPsocket listeningTcpSock);
 
-	void loop(TCPsocket listeningTcpSock, ConcurrentCircularQueue<TCPmessage>& msgQueue);
+	void loop(TCPsocket listeningTcpSock, moodycamel::ReaderWriterQueue<TCPmessage>& msgQueue);
 	
 	void stop();
 
@@ -85,6 +85,26 @@ public:
 		for(int i =0;i< connections.size();i++) {
 			if (connections[i].playerID != newClient.playerID)
 				SDLNet_TCP_Send(connections[i].tcpSocket, buffer.get(), size);
+		}
+	}
+
+	void sendChatMessage(std::string const& message, Uint16 senderPlayerID) {
+		Uint16 size = message.size() + 4 + 2;
+		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
+		if (bufferSize < size) {
+			bufferSize = size;
+			buffer.lossfulRealloc(size);
+		}
+		SDLNet_Write16((Uint16)size, buffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::NEW_CHAT_MESSAGE, buffer.get() + 2);
+		SDLNet_Write16((Uint16)senderPlayerID, buffer.get() + 4);
+		std::memcpy(buffer.get() + 6, message.c_str(), message.size());
+
+		//for each client
+		for (int i = 0; i < connections.size(); i++) {
+			if (SDLNet_TCP_Send(connections[i].tcpSocket, buffer.get(), size) < size) {
+				std::cerr << "HOUSTON WE HAVE A PB";
+			}
 		}
 	}
 
@@ -138,7 +158,6 @@ public:
 	Server();
 	~Server();
 private:
-	void handleFullyReceivedPacket(int clientID);
 	void closeConnection(int clientID);
 
 	//generate a unique player ID (different from clientID which is an index in a client vector)
