@@ -35,6 +35,8 @@ private:
 	Client client;
 	bool isHost;
 	std::string myName;
+	std::string ip;
+	Uint16 port;
 
 	//GUI
 	ScoreBoard scoreBoard;
@@ -43,11 +45,13 @@ private:
 
 
 public:
-	Game(bool isHost) :
+	Game(bool isHost, std::string const& ip, Uint16 port = 9999) :
 		isHost{ isHost },
 		renderingManager(),
 		scoreBoard(renderingManager),
-		chatWindow(renderingManager)
+		chatWindow(renderingManager),
+		ip{ip},
+		port{port}
 	{
 		player = ecs.addEntity();
 		ecs.addComponent<MovingObject>(player, 4.5, 7);
@@ -176,22 +180,26 @@ public:
 		bool quit = false;
 		//Network
 		if (isHost) {
-			server.start();
+			server.start(port);
 		}
 		else {
 			std::cout << "\nEnter YOUR NAME: ";
 			std::cin >> myName;
-			client.start(myName);
+			client.start(myName, ip, port);
 
 		}
 
 		while (!quit) {
-			handleNetwork(chatWindow);
 			updateDeltaTime();
 
 			if (deltaTime >= refreshTimeInterval) {
+				handleNetwork(chatWindow);
+
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);
+				if (!isHost) {
+					chatWindow.sendMessage(client);
+				}
 				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
@@ -224,9 +232,10 @@ public:
 		SDL_Event e;
 		SDL_PollEvent(&e);
 		MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
-
+		//TODO: faire en sorte d'analyser tous les events de la file d'attente et pas juste le premier
 		
 		const Uint8* state = SDL_GetKeyboardState(NULL);
+		chatWin.handleEvents(e);
 		//SDL_PumpEvents();
 		/*if (state[SDL_SCANCODE_UP]) {
 			player.newSpeed.y = playerMaxSpeed.y;

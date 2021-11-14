@@ -126,8 +126,8 @@ public:
 
 	//check if the sockets in the set are ready, and so a future call to receivePacket wont block
 	//the number of sockets should be >= 1
-	void checkSockets(int socketSetSize) {
-		if (SDLNet_CheckSockets(socketSet, 0) == -1 && socketSetSize > 0) {
+	void checkSockets(int socketSetSize, Uint32 timeout = 0) {
+		if (SDLNet_CheckSockets(socketSet, timeout) == -1 && socketSetSize > 0) {
 			std::cerr << "SDLNet_CheckSockets: %s\n" << SDLNet_GetError();
 			//most of the time this is a system error, where perror might help you.
 			perror("SDLNet_CheckSockets");

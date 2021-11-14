@@ -10,10 +10,12 @@
 #define MAX_16_BIT_VALUE 65535
 #define MAX_8_BIT_VALUE 255
 #define MAX_32_BIT_VALUE 4294967295
+#define MAX_TCP_PACKET_SIZE 1200 //it is not the MTU though I put the same value ^^
+#define TCP_SLEEP_DURATION 10 //sleep duration of a TCP sevrer or client in its main loop
 
 std::string getIpAdressAsString(Uint32 ip);
 
-#define MAX_TCP_PACKET_SIZE 1200 //it is not the MTU though I put the same value ^^
+
 
 enum class TcpMsgType {
 	//sent by client
@@ -52,8 +54,8 @@ struct TCPmessage {
 	{
 	}
 	//called by client
-	TCPmessage(TcpMsgType&& type, std::string const& playerName) :
-		playerName{ playerName },
+	TCPmessage(TcpMsgType&& type, std::string&& msg) :
+		message{ std::move(msg) },
 		type{ std::move(type) }
 	{
 	}

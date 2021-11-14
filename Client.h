@@ -14,6 +14,8 @@ class Client : TCPNetworkNode {
 public:
 	TCPConnection connectionToServer;
 	moodycamel::ReaderWriterQueue<TCPmessage> receivedMessages;
+	moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;
+
 	std::thread thread{};
 	std::atomic<bool> clientRunning{ false };
 	UniqueByteBuffer buffer;
@@ -23,7 +25,7 @@ public:
 	bool isConnected{ false };
 
 	//return true if the connection was successfully opened
-	bool openConnectionToServer(std::string hostname, int port = 9999) {
+	bool openConnectionToServer(std::string const& hostname, int port = 9999) {
 		IPaddress ip;
 
 		if (SDLNet_ResolveHost(&ip, hostname.c_str(), port) == -1) {
@@ -96,6 +98,10 @@ public:
 			}
 		
 	}
+	void sendChatMsg(std::string&& text) {
+		//TCPmessage msg(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
+		messagesToSend.emplace(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
+	}
 
 	/*void sendDisconnectRequest() {
 		assert(bufferSize >= 4);
@@ -156,10 +162,12 @@ public:
 		isConnected = true;
 		input = "";
 		int k = 5000;
+		TCPmessage msgToSend{};
 		try {
 			while (input != "exit" && clientRunning) {
 				//receive 
-				checkSockets(1);
+				//here we sleep a bit in select syscall (10ms ?) to avoid CPU crazy usage
+				checkSockets(1, 10);
 				receiveMsg();
 
 				//send
@@ -169,10 +177,8 @@ public:
 				//std::this_thread::sleep_for(std::chrono::seconds{ 1 });
 
 				//TODO: here if we sleep (block thread) for 1 sec it crashes ... why ?
-				if (--k <= 0) {
-					sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::SEND_CHAT_MESSAGE, 
-						std::string("Hey ! What's up man ! I really want to make a long sentance because sometimes it crashes"));
-					k = 1000;
+				if (messagesToSend.try_dequeue(msgToSend)) {
+					sendTCPmsg(connectionToServer.tcpSocket, msgToSend.type, msgToSend.message);
 				}
 			}
 			std::cout << "Bye !" << std::endl;
@@ -202,11 +208,11 @@ public:
 	}
 
 
-	void start(std::string const& myName) {
+	void start(std::string const& myName, std::string const& hostname = "127.0.0.1", Uint16 port = 9999) {
 		if (clientRunning) return;
 
 		playerName = myName;
-		openConnectionToServer("127.0.0.1", 9999);
+		openConnectionToServer(hostname, port);
 		clientRunning = true;
 		thread = std::thread(&Client::loop, this);
 	}

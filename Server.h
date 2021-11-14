@@ -66,7 +66,7 @@ public:
 	
 	void stop();
 
-	void start();
+	void start(Uint16 port = 9999);
 
 	//send to all a new connection msg
 	void sendNewPlayerNotification(ClientConnection const& newClient) {

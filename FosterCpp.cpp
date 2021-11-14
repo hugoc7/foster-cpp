@@ -140,11 +140,17 @@ int main(int argc, char* args[])
     testCircularQueue();
     
     int choice = 1;
+    std::string ip;
+    Uint16 port;
     std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
     std::cin >> choice;
+    std::cout << "IP adress: ";
+    std::cin >> ip;
+    std::cout << "Port number: ";
+    std::cin >> port;
     
     registerAllComponents();
-    Game game(choice == 1);
+    Game game(choice == 1, ip, port);
     game.gameLoop();
  
 

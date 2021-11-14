@@ -92,7 +92,7 @@ void Server::loop(TCPsocket listeningTcpSock, moodycamel::ReaderWriterQueue<TCPm
 
 	while (serverRunning) {
 
-		checkSockets(connections.size());
+		checkSockets(connections.size(), TCP_SLEEP_DURATION);
 
 
 		if (connections.size() < MAX_SOCKETS)
@@ -121,7 +121,7 @@ void Server::stop() {
 }
 
 
-void Server::start() {
+void Server::start(Uint16 port) {
 	if (serverRunning) return;
 
 	// create a listening TCP socket on port 9999 (server)
@@ -135,7 +135,7 @@ void Server::start() {
 		exit(1); //most of the time this is a major error, but do what you want.
 	}*/
 
-	if (SDLNet_ResolveHost(&ip, NULL, 9999) == -1) {
+	if (SDLNet_ResolveHost(&ip, NULL, port) == -1) {
 		std::cout << "SDLNet_ResolveHost: " << SDLNet_GetError() << std::endl;
 		exit(1);
 	}
