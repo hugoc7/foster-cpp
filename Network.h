@@ -13,7 +13,7 @@
 #define MAX_TCP_PACKET_SIZE 1200 //it is not the MTU though I put the same value ^^
 #define TCP_SLEEP_DURATION 10 //sleep duration of a TCP sevrer or client in its main loop
 
-std::string getIpAdressAsString(Uint32 ip);
+std::string&& getIpAdressAsString(Uint32 ip);
 
 
 

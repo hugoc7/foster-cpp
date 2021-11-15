@@ -1,12 +1,12 @@
 #pragma once
 
 
-#include "SDL_net.h"
 #include <iostream>
 #include <string>
 #include "Network.h"
 #include "Containers.h"
 #include "TCPNetworkNode.h"
+#include "SDLNetCpp.h"
 
 
 
@@ -25,36 +25,17 @@ public:
 	bool isConnected{ false };
 
 	//return true if the connection was successfully opened
-	bool openConnectionToServer(std::string const& hostname, int port = 9999) {
-		IPaddress ip;
-
-		if (SDLNet_ResolveHost(&ip, hostname.c_str(), port) == -1) {
-			std::cerr << "SDLNet_ResolveHost: " << SDLNet_GetError() << std::endl;
-			return false;
-		}
-
+	void openConnectionToServer(std::string const& hostname, int port = 9999) {
+		IPaddressObject ip;
+		ip.resolveHost(hostname.c_str(), port);
 		std::cout << "Try to connect to server ..." << std::endl;
-		TCPsocket tcpSock = SDLNet_TCP_Open(&ip);
-		if (!tcpSock) {
-			std::cerr << "SDLNet_TCP_Open: " << SDLNet_GetError() << std::endl;
-			return false;
-		}
-		connectionToServer.setSocket(tcpSock, socketSet);
-
+		TCPsocketObject tcpSock;
+		tcpSock.open(ip);
+		connectionToServer.setSocket(std::move(tcpSock), socketSet);
 
 		// get the remote IP and port
-		// TCPsocket new_tcpsock;
-		IPaddress* remote_ip;
-		remote_ip = SDLNet_TCP_GetPeerAddress(tcpSock);
-		if (!remote_ip) {
-			printf("SDLNet_TCP_GetPeerAddress: %s\n", SDLNet_GetError());
-			printf("This may be a server socket.\n");
-		}
-		else {
-			remote_ip->host;
-			std::cout << "Connected to " << getIpAdressAsString(remote_ip->host) << " on port " << remote_ip->port << std::endl;
-		}
-		return true;
+		std::cout << "Connected to " << connectionToServer.tcpSocket.getPeerIP() 
+			<< " on port " << connectionToServer.tcpSocket.getPeerPort() << std::endl;
 	}
 
 	void closeConnection() {
@@ -63,43 +44,17 @@ public:
 			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
 			isConnected = false;
 		}
-		connectionToServer.close();//close the socket*/
+		connectionToServer.close(socketSet);//close the socket*/
 	}
 
 	void receiveMsg() {
-		//try {
 			if (receivePacket(connectionToServer)) {
-
 				//interpret the buffer content to create a msg object
 				TCPmessage newMessage(connectionToServer.buffer, connectionToServer.packetSize);
 				receivedMessages.enqueue(std::move(newMessage));
-				/*switch (newMessage.type) {
-				case TcpMsgType::NEW_CONNECTION:
-					receivedMessages.lockQueue();
-					receivedMessages.enqueue(std::move(newMessage));
-					receivedMessages.unlockQueue();
-					break;
-				case TcpMsgType::NEW_DISCONNECTION:
-					receivedMessages.lockQueue();
-					receivedMessages.enqueue(std::move(newMessage));
-					receivedMessages.unlockQueue();
-					break;
-				case TcpMsgType::PLAYER_LIST:
-					receivedMessages.lockQueue();
-					receivedMessages.enqueue(std::move(newMessage));
-					receivedMessages.unlockQueue();
-					break;
-				case TcpMsgType::NEW_CHAT_MESSAGE:
-					receivedMessages.lockQueue();
-					receivedMessages.enqueue(std::move(newMessage));
-					receivedMessages.unlockQueue();
-					break;
-				}*/
 			}
-		
 	}
 	void sendChatMsg(std::string&& text) {
-		//TCPmessage msg(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
 		messagesToSend.emplace(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
 	}
 
@@ -134,13 +89,13 @@ public:
 		SDLNet_TCP_Send(connectionToServer.tcpSocket, buffer.get(), size);
 	}*/
 
-	void sendTCPmsg(TCPsocket tcpSock, TcpMsgType type, std::string str) {
+	void sendTCPmsg(TCPsocketObject const& tcpSock, TcpMsgType type, std::string str) {
 
 		if (type == TcpMsgType::DISCONNECTION_REQUEST) {
 			assert(bufferSize >= 4);
 			SDLNet_Write16((Uint16)4, buffer.get());
 			SDLNet_Write16((Uint16)type, buffer.get() + 2);
-			SDLNet_TCP_Send(tcpSock, buffer.get(), 4);
+			tcpSock.send(buffer.get(), 4);
 		}
 		else {
 			Uint16 size = str.size() + 4;
@@ -152,29 +107,22 @@ public:
 			SDLNet_Write16((Uint16)size, buffer.get());
 			SDLNet_Write16((Uint16)type, buffer.get() + 2);
 			std::memcpy(buffer.get() + 4, str.c_str(), str.size());
-			SDLNet_TCP_Send(tcpSock, buffer.get(), size);
+			tcpSock.send(buffer.get(), size);
 		}
 	}
 
 	void loop() {
-		std::string input = "";
+
 		sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::CONNECTION_REQUEST, playerName);
 		isConnected = true;
-		input = "";
+
 		int k = 5000;
 		TCPmessage msgToSend{};
 		try {
-			while (input != "exit" && clientRunning) {
-				//receive 
+			while ( clientRunning) {
 				//here we sleep a bit in select syscall (10ms ?) to avoid CPU crazy usage
-				checkSockets(1, 10);
+				checkSockets(TCP_SLEEP_DURATION);
 				receiveMsg();
-
-				//send
-				//std::cout << "Enter message: ";
-				//std::getline(std::cin, input);
-				//if (input != "exit" && !input.empty())
-				//std::this_thread::sleep_for(std::chrono::seconds{ 1 });
 
 				//TODO: here if we sleep (block thread) for 1 sec it crashes ... why ?
 				if (messagesToSend.try_dequeue(msgToSend)) {
@@ -204,7 +152,7 @@ public:
 		if (!clientRunning) return;
 		clientRunning = false;//std::atomic is noexcept
 		thread.join();
-		connectionToServer.close();
+		connectionToServer.close(socketSet);
 	}
 
 

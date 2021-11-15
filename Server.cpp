@@ -10,17 +10,17 @@ void Server::closeConnection(int clientID) {
 		//messages.unlockQueue();
 		connections[clientID].connectedToGame = false;
 	}
-	connections[clientID].close();//close the socket
+	connections[clientID].close(socketSet);//close the socket
 	removeFromVector(connections, clientID);
 	sendPlayerDisconnectionNotification(playerID);
 }
 
 ///@brief receive TCP messages from all clients (non blocking)
-void Server::receiveMessagesFromClients(std::vector<ClientConnection>& clients, moodycamel::ReaderWriterQueue<TCPmessage>& messages) {
+void Server::receiveMessagesFromClients() {
 	//for each client
-	for (int clientID = 0; clientID < clients.size(); clientID++) {
+	for (int clientID = 0; clientID < connections.size(); clientID++) {
 		try {
-			if (receivePacket(clients[clientID])) {
+			if (receivePacket(connections[clientID])) {
 				connections[clientID].bytesReceived = 0;
 				//interpret the buffer content to create a msg object
 				TCPmessage newMessage(connections[clientID].buffer, connections[clientID].packetSize);
@@ -66,41 +66,33 @@ void Server::receiveMessagesFromClients(std::vector<ClientConnection>& clients, 
 }
 
 
-void Server::acceptNewConnection(TCPsocket listeningTcpSock) {
+void Server::acceptNewConnection() {
 	// accept a connection coming in on server_tcpsock
-	TCPsocket new_tcpsock{ NULL };
+	TCPsocketObject new_tcpsock;
 
-	if (!SDLNet_SocketReady(listeningTcpSock)) return;//strange, it works but cheksockets have not been called yet
-	new_tcpsock = SDLNet_TCP_Accept(listeningTcpSock);
-	if (new_tcpsock != NULL) {
+	if (!listeningTcpSock.isReady()) return;//strange, it works but cheksockets have not been called yet
 
-		// get the remote IP and port
-		IPaddress* remote_ip{ NULL };
-		remote_ip = SDLNet_TCP_GetPeerAddress(new_tcpsock);
-		if (!remote_ip) {
-			printf("SDLNet_TCP_GetPeerAddress: %s\n", SDLNet_GetError());
-			printf("This may be a server socket.\n");
-		}
-		else {
-			std::cout << "New connection accepted with " << getIpAdressAsString(remote_ip->host) << " on his port " << remote_ip->port << std::endl;
-			connections.emplace_back(new_tcpsock, socketSet);
-		}
+	if (listeningTcpSock.accept(new_tcpsock)) {
+
+		/*std::cout << "New connection accepted with " << new_tcpsock.getPeerIP() 
+			<< " on his port " << new_tcpsock.getPeerPort() << std::endl;*/
+		connections.emplace_back(std::move(new_tcpsock), std::ref(socketSet));//error here
 	}
 }
 
-void Server::loop(TCPsocket listeningTcpSock, moodycamel::ReaderWriterQueue<TCPmessage>& msgQueue) {
+void Server::loop() {
 
 	while (serverRunning) {
 
-		checkSockets(connections.size(), TCP_SLEEP_DURATION);
+		checkSockets(TCP_SLEEP_DURATION);
 
 
 		if (connections.size() < MAX_SOCKETS)
-			acceptNewConnection(listeningTcpSock);
+			acceptNewConnection();
 
 
 		if (connections.size() > 0) {
-			receiveMessagesFromClients(connections, msgQueue);
+			receiveMessagesFromClients();
 		}
 	}
 
@@ -111,12 +103,8 @@ void Server::stop() {
 	thread.join();
 
 	connections.clear();
-	if (SDLNet_TCP_DelSocket(socketSet, listeningTcpSock) == -1) {
-		printf("SDLNet_DelSocket: %s\n", SDLNet_GetError());
-		// perhaps the socket is not in the set
-		std::abort();
-	}
-	SDLNet_TCP_Close(listeningTcpSock);
+	socketSet.delSocket(listeningTcpSock);
+	listeningTcpSock.close();
 	//SDLNet_FreeSocketSet(socketSet);
 }
 
@@ -124,38 +112,16 @@ void Server::stop() {
 void Server::start(Uint16 port) {
 	if (serverRunning) return;
 
-	// create a listening TCP socket on port 9999 (server)
-	IPaddress ip;
+	// create a listening TCP socket  (server)
+	IPaddressObject ip;
 
-
-	//socketSet = SDLNet_AllocSocketSet(MAX_SOCKETS);
-
-	/*if (!socketSet) {
-		printf("SDLNet_AllocSocketSet: %s\n", SDLNet_GetError());
-		exit(1); //most of the time this is a major error, but do what you want.
-	}*/
-
-	if (SDLNet_ResolveHost(&ip, NULL, port) == -1) {
-		std::cout << "SDLNet_ResolveHost: " << SDLNet_GetError() << std::endl;
-		exit(1);
-	}
-
-	listeningTcpSock = SDLNet_TCP_Open(&ip);
-	if (!listeningTcpSock) {
-		std::cout << "SDLNet_TCP_Open: " << SDLNet_GetError() << std::endl;
-		exit(2);
-	}
-	//socketSet = SDLNet_AllocSocketSet(MAX_SOCKETS);
-	if (SDLNet_TCP_AddSocket(socketSet, listeningTcpSock) == -1) {
-		printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
-		// perhaps you need to restart the set and make it bigger...
-		//throw exception
-		exit(1);
-	}
+	ip.resolveHost(port);
+	listeningTcpSock.open(ip);
+	socketSet.addSocket(listeningTcpSock);
 
 	std::cout << "Starting server ..." << std::endl;
 	serverRunning = true;
-	thread = std::thread(&Server::loop, this, listeningTcpSock, std::ref(messages));
+	thread = std::thread(&Server::loop, this);
 }
 
 Server::Server() : TCPNetworkNode(), messages(MAX_MESSAGES), buffer(4), bufferSize{ 4 } {

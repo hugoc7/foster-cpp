@@ -12,6 +12,7 @@
 #include <atomic>
 #include <functional>
 #include "TCPNetworkNode.h"
+#include "SDLNetCpp.h"
 
 struct ClientConnection : TCPConnection {
 	std::string playerName;
@@ -19,7 +20,9 @@ struct ClientConnection : TCPConnection {
 	Uint16 playerID{};
 
 
-	ClientConnection(TCPsocket tcpSocket, SDLNet_SocketSet socketSet) : TCPConnection(tcpSocket, socketSet) {
+	ClientConnection(TCPsocketObject&& tcpSocket, SocketSetObject& socketSet) : 
+		TCPConnection(std::move(tcpSocket), socketSet) 
+	{
 	}
 
 	ClientConnection(ClientConnection&& other) noexcept :
@@ -49,7 +52,7 @@ public:
 	moodycamel::ReaderWriterQueue<TCPmessage> messages;
 	std::thread thread{};
 	std::atomic<bool> serverRunning{ false };
-	TCPsocket listeningTcpSock{ NULL };
+	TCPsocketObject listeningTcpSock;
 
 	UniqueByteBuffer buffer; //buffer for sending !
 	int bufferSize;
@@ -58,11 +61,11 @@ public:
 	//const int MAX_SOCKETS{16};
 
 	///@brief receive TCP messages from all clients (non blocking)
-	void receiveMessagesFromClients(std::vector<ClientConnection>& clients, moodycamel::ReaderWriterQueue<TCPmessage>& messages);
+	void receiveMessagesFromClients();
 
-	void acceptNewConnection(TCPsocket listeningTcpSock);
+	void acceptNewConnection();
 
-	void loop(TCPsocket listeningTcpSock, moodycamel::ReaderWriterQueue<TCPmessage>& msgQueue);
+	void loop();
 	
 	void stop();
 
@@ -84,7 +87,7 @@ public:
 		//for each client
 		for(int i =0;i< connections.size();i++) {
 			if (connections[i].playerID != newClient.playerID)
-				SDLNet_TCP_Send(connections[i].tcpSocket, buffer.get(), size);
+				connections[i].tcpSocket.send(buffer.get(), size);
 		}
 	}
 
@@ -102,7 +105,7 @@ public:
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
-			if (SDLNet_TCP_Send(connections[i].tcpSocket, buffer.get(), size) < size) {
+			if (connections[i].tcpSocket.send(buffer.get(), size) < size) {
 				std::cerr << "HOUSTON WE HAVE A PB";
 			}
 		}
@@ -133,7 +136,7 @@ public:
 			std::memcpy(buffer.get() + currentByteIndex, connections[i].playerName.c_str(), connections[i].playerName.size());
 			currentByteIndex += connections[i].playerName.size();
 		}
-		SDLNet_TCP_Send(newClient.tcpSocket, buffer.get(), size);
+		newClient.tcpSocket.send(buffer.get(), size);
 	}
 
 	//send to all a new disconnection msg
@@ -149,7 +152,7 @@ public:
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
-			SDLNet_TCP_Send(connections[i].tcpSocket, buffer.get(), size);
+			connections[i].tcpSocket.send(buffer.get(), size);
 		}
 	}
 

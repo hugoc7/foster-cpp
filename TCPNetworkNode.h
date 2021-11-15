@@ -12,12 +12,11 @@
 #include "Containers.h"
 #include <atomic>
 #include <functional>
-
+#include "SDLNetCpp.h"
 
 struct TCPConnection {
 
-	TCPsocket tcpSocket{ NULL };
-	SDLNet_SocketSet socketSet{ NULL };
+	TCPsocketObject tcpSocket;
 	UniqueByteBuffer buffer;
 	int bufferSize{ 30 };//buffer size MUST always be >= 4
 	int bytesReceived{ 0 };
@@ -25,33 +24,22 @@ struct TCPConnection {
 
 	TCPConnection() : buffer(30) {};
 
-	void setSocket(TCPsocket arg_tcpSocket, SDLNet_SocketSet arg_socketSet) {
-		tcpSocket = arg_tcpSocket;
-		socketSet = arg_socketSet;
-		if (SDLNet_TCP_AddSocket(socketSet, tcpSocket) == -1) {
-			printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
-			throw std::bad_alloc();//TODO: make a custom exception for SDL_Net errors
-		}
+	void setSocket(TCPsocketObject&& arg_tcpSocket, SocketSetObject& arg_socketSet) {
+		tcpSocket = std::move(arg_tcpSocket);
+		arg_socketSet.addSocket(tcpSocket);
 	}
 
-	TCPConnection(TCPsocket tcpSocket, SDLNet_SocketSet socketSet) :
-		tcpSocket{ tcpSocket }, buffer(30), socketSet{ socketSet } {
-
-		if (SDLNet_TCP_AddSocket(socketSet, tcpSocket) == -1) {
-			printf("SDLNet_AddSocket: %s\n", SDLNet_GetError());
-			throw std::bad_alloc();//TODO: make a custom exception for SDL_Net errors
-		}
+	TCPConnection(TCPsocketObject&& socket, SocketSetObject& socketSet) :
+		tcpSocket{ std::move(socket) }, buffer(30) {
+		socketSet.addSocket(tcpSocket);
 	}
 	TCPConnection(TCPConnection&& other) noexcept :
 		tcpSocket{ std::move(other.tcpSocket) },
 		buffer{ std::move(other.buffer) },
 		bufferSize{ std::move(other.bufferSize) },
 		bytesReceived{ std::move(other.bytesReceived) },
-		packetSize{ std::move(other.packetSize) },
-		socketSet{ std::move(other.socketSet) }
+		packetSize{ std::move(other.packetSize) }
 	{
-		other.tcpSocket = NULL;
-		other.socketSet = NULL;
 	}
 
 	//NO COPY ALLOWED BECAUSE TCP SOCKET IS NOT COPYABLE
@@ -64,53 +52,24 @@ struct TCPConnection {
 		bufferSize = std::move(other.bufferSize);
 		bytesReceived = std::move(other.bytesReceived);
 		packetSize = std::move(other.packetSize);
-		socketSet = std::move(other.socketSet);
-		other.tcpSocket = NULL;
-		other.socketSet = NULL;
 		return *this;
 	}
 
-	void close() {
-		//remove the socket form the socket set
-		if (SDLNet_TCP_DelSocket(socketSet, tcpSocket) == -1) {
-			printf("SDLNet_DelSocket: %s\n", SDLNet_GetError());
-			// perhaps the socket is not in the set
-			exit(1);//TODO: make a custom exception for SDL_Net errors
-		}
-		SDLNet_TCP_Close(tcpSocket);
-		tcpSocket = NULL;
-	}
-	~TCPConnection() {
-		if (tcpSocket != NULL) {
-			if (socketSet != NULL) {
-				//remove the socket form the socket set
-				if (SDLNet_TCP_DelSocket(socketSet, tcpSocket) == -1) {
-					printf("SDLNet_DelSocket: %s\n", SDLNet_GetError());
-					// perhaps the socket is not in the set
-					exit(1);//TODO: make a custom exception for SDL_Net errors
-				}
-			}
-			SDLNet_TCP_Close(tcpSocket);
-		}
+	void close(SocketSetObject& set) {
+		//remove the socket from the socket set
+		set.delSocket(tcpSocket);
+		tcpSocket.close();
 	}
 
 };
 
 class TCPNetworkNode {
 protected:
-	SDLNet_SocketSet socketSet{ NULL };
+	SocketSetObject socketSet;
 	const int MAX_SOCKETS;
 
 public:
-	TCPNetworkNode() : MAX_SOCKETS{ 16 }, socketSet{ SDLNet_AllocSocketSet(16) }
-	{
-		if (!socketSet) {
-			std::cerr << "SDLNet_AllocSocketSet: %s\n", SDLNet_GetError();
-			throw std::bad_alloc();
-		}
-	}
-	~TCPNetworkNode() {
-		SDLNet_FreeSocketSet(socketSet);
+	TCPNetworkNode() : MAX_SOCKETS{ 16 }, socketSet{ 16 } {
 	}
 
 	TCPNetworkNode(TCPNetworkNode const&) = delete;
@@ -119,49 +78,38 @@ public:
 	TCPNetworkNode& operator=(TCPNetworkNode&&) = delete;
 
 	//return true if the packet has been fully sent
-	bool sendPacket(TCPConnection const& connection, UniqueByteBuffer const& buffer, int size) const noexcept {
+	/*bool sendPacket(TCPConnection const& connection, UniqueByteBuffer const& buffer, int size) const noexcept {
 		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
 		return (SDLNet_TCP_Send(connection.tcpSocket, buffer.get(), size) == size);
-	}
+	}*/
 
 	//check if the sockets in the set are ready, and so a future call to receivePacket wont block
 	//the number of sockets should be >= 1
-	void checkSockets(int socketSetSize, Uint32 timeout = 0) {
-		if (SDLNet_CheckSockets(socketSet, timeout) == -1 && socketSetSize > 0) {
-			std::cerr << "SDLNet_CheckSockets: %s\n" << SDLNet_GetError();
-			//most of the time this is a system error, where perror might help you.
-			perror("SDLNet_CheckSockets");
-			throw std::bad_alloc();//create a real exception
-		}
+	void checkSockets(Uint32 timeout = 0) {
+		socketSet.checkSockets(timeout);	
 	}
 
 	//return true if the packet is fully received
 	//throw if an error occured, if so the connection should be closed
 	//TODO: make this method member of TCPConnection !
 	bool receivePacket(TCPConnection& connection) const {
-		if (!SDLNet_SocketReady(connection.tcpSocket)) 
+		if (!connection.tcpSocket.isReady()) 
 			return false;
 
 		int ret;
 		//if we already know the packet size
 		if (connection.bytesReceived >= 2) {
-			ret = SDLNet_TCP_Recv(connection.tcpSocket, connection.buffer.get() + connection.bytesReceived, 
+			ret = connection.tcpSocket.recv(connection.buffer.get() + connection.bytesReceived, 
 				connection.packetSize - connection.bytesReceived);
-			if (ret == -1) {
-				//todo: create an exception
-				throw std::runtime_error(std::string("Error in SDLNet_TCP_Recv (1): ") + SDLNet_GetError());
-			}
+			
 			connection.bytesReceived += ret;
 		}
 
 		//if we dont know the packet size yet
 		else {
-			ret = SDLNet_TCP_Recv(connection.tcpSocket, connection.buffer.get() + connection.bytesReceived, 
+			ret = connection.tcpSocket.recv(connection.buffer.get() + connection.bytesReceived,
 				connection.bufferSize - connection.bytesReceived);
-			if (ret == -1) {
-				//todo: create an exception class
-				throw std::runtime_error(std::string{ "Error in SDLNet_TCP_Recv (2): " } + SDLNet_GetError());
-			}
+
 			connection.bytesReceived += ret;
 
 			//if we have received the packet size header
