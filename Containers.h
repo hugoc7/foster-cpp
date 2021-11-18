@@ -215,24 +215,33 @@ public:
 class UniqueByteBuffer {
 private:
 	char* data;//could be std::byte* ?
+	unsigned int size;
 public:
-	UniqueByteBuffer(size_t initialSize) : data{ reinterpret_cast<char*> (std::malloc(sizeof(char) * initialSize)) } {
+	UniqueByteBuffer(unsigned int initialSize) :
+		data{ reinterpret_cast<char*> (std::malloc(sizeof(char) * initialSize)) },
+		size{ initialSize }
+	{
 		if (data == nullptr)
 			throw std::bad_alloc();
 	}
-	void realloc(size_t newSize) {
+	unsigned int Size() const noexcept {
+		return size;
+	}
+	void realloc(unsigned int newSize) {
 		char* newPtr{ static_cast<char*>(std::realloc(data, sizeof(char)*newSize)) };
 		if (newPtr == nullptr) {
 			std::free(data);
 			throw std::bad_alloc();
 		}
 		data = newPtr;
+		size = newSize;
 	}
-	void lossfulRealloc(size_t newSize) {
+	void lossfulRealloc(unsigned int newSize) {
 		std::free(data);
 		data = reinterpret_cast<char*> (std::malloc(sizeof(char) * newSize));
 		if (data == nullptr)
 			throw std::bad_alloc();
+		size = newSize;
 	}
 	char* get() const noexcept {
 		return data;
@@ -245,7 +254,8 @@ public:
 	UniqueByteBuffer(UniqueByteBuffer const& other) = delete;//remove cpy constructor
 	UniqueByteBuffer& operator=(UniqueByteBuffer const& other) = delete;//remove cpy assignment
 	UniqueByteBuffer(UniqueByteBuffer&& other) noexcept :
-		data{ std::move(other.data) }
+		data{ std::move(other.data) },
+		size{ other.size }
 	{
 		other.data = nullptr;
 	}

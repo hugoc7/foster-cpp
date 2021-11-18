@@ -2,7 +2,7 @@
 
 #include "Network.h"
 
-std::string&& getIpAdressAsString(Uint32 ip) {
+std::string getIpAdressAsString(Uint32 ip) {
 	unsigned char parts[4];
 	parts[0] = ip % 256;
 	ip /= 256;

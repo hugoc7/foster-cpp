@@ -17,12 +17,15 @@
 struct TCPConnection {
 
 	TCPsocketObject tcpSocket;
-	UniqueByteBuffer buffer;
-	int bufferSize{ 30 };//buffer size MUST always be >= 4
 	int bytesReceived{ 0 };
 	Uint16 packetSize{ 0 };//0 is a special value which means we dont know the size of the packet yet
 
-	TCPConnection() : buffer(30) {};
+	//Sending packet:
+	int bytesToSend{ 0 };
+	int sendingBufferIndex{ -1 };
+	int recvBufferIndex{ NO_BUFFER };//-1 is a special value which means no current buffer
+
+	TCPConnection() {};
 
 	void setSocket(TCPsocketObject&& arg_tcpSocket, SocketSetObject& arg_socketSet) {
 		tcpSocket = std::move(arg_tcpSocket);
@@ -30,30 +33,17 @@ struct TCPConnection {
 	}
 
 	TCPConnection(TCPsocketObject&& socket, SocketSetObject& socketSet) :
-		tcpSocket{ std::move(socket) }, buffer(30) {
+		tcpSocket{ std::move(socket) } {
 		socketSet.addSocket(tcpSocket);
-	}
-	TCPConnection(TCPConnection&& other) noexcept :
-		tcpSocket{ std::move(other.tcpSocket) },
-		buffer{ std::move(other.buffer) },
-		bufferSize{ std::move(other.bufferSize) },
-		bytesReceived{ std::move(other.bytesReceived) },
-		packetSize{ std::move(other.packetSize) }
-	{
 	}
 
 	//NO COPY ALLOWED BECAUSE TCP SOCKET IS NOT COPYABLE
 	TCPConnection(TCPConnection const& other) = delete;
 	TCPConnection& operator=(TCPConnection const& other) = delete;
 
-	TCPConnection& operator=(TCPConnection&& other) noexcept {
-		tcpSocket = std::move(other.tcpSocket);
-		buffer = std::move(other.buffer);
-		bufferSize = std::move(other.bufferSize);
-		bytesReceived = std::move(other.bytesReceived);
-		packetSize = std::move(other.packetSize);
-		return *this;
-	}
+	//move allowed
+	TCPConnection(TCPConnection&& other) = default;
+	TCPConnection& operator=(TCPConnection&& other) = default;
 
 	void close(SocketSetObject& set) {
 		//remove the socket from the socket set
@@ -68,8 +58,13 @@ protected:
 	SocketSetObject socketSet;
 	const int MAX_SOCKETS;
 
+	//receiving buffers
+	std::vector<UniqueByteBuffer> recvBuffers;
+	std::vector<int> availableRecvBuffers;
+
+
 public:
-	TCPNetworkNode() : MAX_SOCKETS{ 16 }, socketSet{ 16 } {
+	TCPNetworkNode() : MAX_SOCKETS{ MAX_TCP_SOCKETS }, socketSet{ MAX_TCP_SOCKETS } {
 	}
 
 	TCPNetworkNode(TCPNetworkNode const&) = delete;
@@ -77,11 +72,32 @@ public:
 	TCPNetworkNode& operator=(TCPNetworkNode const&) = delete;
 	TCPNetworkNode& operator=(TCPNetworkNode&&) = delete;
 
-	//return true if the packet has been fully sent
-	/*bool sendPacket(TCPConnection const& connection, UniqueByteBuffer const& buffer, int size) const noexcept {
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		return (SDLNet_TCP_Send(connection.tcpSocket, buffer.get(), size) == size);
-	}*/
+
+	int getAvailableRecvBufferIndex(unsigned int initSize) {
+		assert(initSize >= 4);
+		if (availableRecvBuffers.empty()) {
+			recvBuffers.emplace_back(initSize);
+			return recvBuffers.size() - 1;
+		}
+		else {
+			int index = availableRecvBuffers.back();
+			availableRecvBuffers.pop_back();
+			return index;
+		}
+	}
+	UniqueByteBuffer& getRecvBuffer(int index) {
+		return recvBuffers[index];
+	}
+	void releaseRecvBuffer(TCPConnection& connection) {
+		availableRecvBuffers.emplace_back(connection.recvBufferIndex);
+		connection.recvBufferIndex = NO_BUFFER;
+	}
+	void try_releaseRecvBuffer(TCPConnection& connection) {
+		if (connection.recvBufferIndex == NO_BUFFER) return;
+		availableRecvBuffers.emplace_back(connection.recvBufferIndex);
+		connection.recvBufferIndex = NO_BUFFER;
+	}
+
 
 	//check if the sockets in the set are ready, and so a future call to receivePacket wont block
 	//the number of sockets should be >= 1
@@ -92,14 +108,20 @@ public:
 	//return true if the packet is fully received
 	//throw if an error occured, if so the connection should be closed
 	//TODO: make this method member of TCPConnection !
-	bool receivePacket(TCPConnection& connection) const {
+	bool receivePacket(TCPConnection& connection) {
 		if (!connection.tcpSocket.isReady()) 
 			return false;
+
+		//acquire a buffer
+		if (connection.bytesReceived == 0) {
+			connection.recvBufferIndex = getAvailableRecvBufferIndex(INITIAL_TCP_BUFFER_SIZE);
+		}
+		UniqueByteBuffer& buffer{ getRecvBuffer(connection.recvBufferIndex) };
 
 		int ret;
 		//if we already know the packet size
 		if (connection.bytesReceived >= 2) {
-			ret = connection.tcpSocket.recv(connection.buffer.get() + connection.bytesReceived, 
+			ret = connection.tcpSocket.recv(buffer.get() + connection.bytesReceived, 
 				connection.packetSize - connection.bytesReceived);
 			
 			connection.bytesReceived += ret;
@@ -107,14 +129,14 @@ public:
 
 		//if we dont know the packet size yet
 		else {
-			ret = connection.tcpSocket.recv(connection.buffer.get() + connection.bytesReceived,
-				connection.bufferSize - connection.bytesReceived);
+			ret = connection.tcpSocket.recv(buffer.get() + connection.bytesReceived,
+				buffer.Size() - connection.bytesReceived);
 
 			connection.bytesReceived += ret;
 
 			//if we have received the packet size header
 			if (connection.bytesReceived >= 2) {
-				connection.packetSize = (Uint16)SDLNet_Read16(connection.buffer.get());
+				connection.packetSize = (Uint16)SDLNet_Read16(buffer.get());
 				if (connection.packetSize > MAX_TCP_PACKET_SIZE) {
 					throw std::runtime_error("The TCP packet is too big, closing connection");//todo: create an exception
 				}
@@ -123,9 +145,8 @@ public:
 				}
 
 				//grow up the buffer if needed (lossless)
-				if (connection.bufferSize < connection.packetSize) {
-					connection.bufferSize = connection.packetSize;
-					connection.buffer.realloc(connection.bufferSize);
+				if (buffer.Size() < connection.packetSize) {
+					buffer.realloc(connection.packetSize);
 				}
 			}
 		}

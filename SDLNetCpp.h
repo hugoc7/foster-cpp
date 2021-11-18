@@ -11,7 +11,7 @@
 //WARNING: peut etre rajouter une condition if (socket!=NULL) throw au debut de chaque methode de TCPSocketObject
 
 //helper
-std::string&& getIpAdressAsString(Uint32 ip);
+std::string getIpAdressAsString(Uint32 ip);
 
 class IPaddressObject {
 	friend class TCPsocketObject;
@@ -100,7 +100,7 @@ public:
 		assert(newSocket.socket == NULL);
 		return (newSocket.socket = SDLNet_TCP_Accept(socket)) != NULL;
 	}
-	std::string&& getPeerIP() const {
+	std::string getPeerIP() const {
 		assert(socket != NULL);
 		IPaddress* remote_ip{ NULL };
 		remote_ip = SDLNet_TCP_GetPeerAddress(socket);

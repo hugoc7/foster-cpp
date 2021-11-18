@@ -25,21 +25,8 @@ struct ClientConnection : TCPConnection {
 	{
 	}
 
-	ClientConnection(ClientConnection&& other) noexcept :
-		TCPConnection(std::move(other)),
-		playerName{ std::move(other.playerName) },
-		connectedToGame{other.connectedToGame},
-		playerID{other.playerID}
-	{
-	}
-	ClientConnection& operator=(ClientConnection&& other) noexcept {
-		TCPConnection::operator=(std::move(other));
-		playerName = std::move(other.playerName);
-		connectedToGame = other.connectedToGame;
-		playerID = other.playerID;
-		return *this;
-	}
-	
+	ClientConnection(ClientConnection&& other) = default;
+	ClientConnection& operator=(ClientConnection&& other) = default;
 };
 
 

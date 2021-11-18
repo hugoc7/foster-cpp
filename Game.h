@@ -133,8 +133,8 @@ public:
 					//MESSAGE RECEIVED BY CLIENT
 				case TcpMsgType::NEW_CONNECTION:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
 					break;
 
 				case TcpMsgType::NEW_CHAT_MESSAGE:
@@ -143,6 +143,7 @@ public:
 						if (found = (playersInfos[i].id == new_message.playerID)) {
 							std::cout << playersInfos[i].name << " : " << new_message.message << std::endl;
 							chatWindow.messages.enqueue(playersInfos[i].name + " : " + new_message.message);
+							removeFromVector(playersInfos, i);
 							break;
 						}
 					}
@@ -155,6 +156,7 @@ public:
 						if (found = (playersInfos[i].id == new_message.playerID)) {
 							std::cout << playersInfos[i].name << " s'est deconnecte." << std::endl;
 							chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
+
 							break;
 						}
 					}

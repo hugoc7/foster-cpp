@@ -36,6 +36,8 @@ public:
 		// get the remote IP and port
 		std::cout << "Connected to " << connectionToServer.tcpSocket.getPeerIP() 
 			<< " on port " << connectionToServer.tcpSocket.getPeerPort() << std::endl;
+
+		connectionToServer.recvBufferIndex = getAvailableRecvBufferIndex(INITIAL_TCP_BUFFER_SIZE);
 	}
 
 	void closeConnection() {
@@ -44,14 +46,16 @@ public:
 			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
 			isConnected = false;
 		}
+		try_releaseRecvBuffer(connectionToServer);
 		connectionToServer.close(socketSet);//close the socket*/
 	}
 
 	void receiveMsg() {
 			if (receivePacket(connectionToServer)) {
 				//interpret the buffer content to create a msg object
-				TCPmessage newMessage(connectionToServer.buffer, connectionToServer.packetSize);
+				TCPmessage newMessage(getRecvBuffer(connectionToServer.recvBufferIndex), connectionToServer.packetSize);
 				receivedMessages.enqueue(std::move(newMessage));
+
 			}
 	}
 	void sendChatMsg(std::string&& text) {

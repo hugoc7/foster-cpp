@@ -3,13 +3,11 @@
 void Server::closeConnection(int clientID) {
 	Uint16 playerID{ connections[clientID].playerID };
 	if (connections[clientID].connectedToGame) {
-		TCPmessage disconnectionMsg(TcpMsgType::DISCONNECTION_REQUEST, 
+		messages.emplace(TcpMsgType::DISCONNECTION_REQUEST,
 			std::move(connections[clientID].playerName), connections[clientID].playerID);
-		//messages.lockQueue();
-		messages.enqueue(std::move(disconnectionMsg));//TODO: it would be better to EMPLACE (moodyCamelQueue has it)
-		//messages.unlockQueue();
 		connections[clientID].connectedToGame = false;
 	}
+	try_releaseRecvBuffer(connections[clientID]);
 	connections[clientID].close(socketSet);//close the socket
 	removeFromVector(connections, clientID);
 	sendPlayerDisconnectionNotification(playerID);
@@ -22,8 +20,12 @@ void Server::receiveMessagesFromClients() {
 		try {
 			if (receivePacket(connections[clientID])) {
 				connections[clientID].bytesReceived = 0;
+
 				//interpret the buffer content to create a msg object
-				TCPmessage newMessage(connections[clientID].buffer, connections[clientID].packetSize);
+				TCPmessage newMessage(getRecvBuffer(connections[clientID].recvBufferIndex), connections[clientID].packetSize);
+
+				releaseRecvBuffer(connections[clientID]);
+
 
 				switch (newMessage.type) {
 					//if client request disconnection
@@ -129,29 +131,4 @@ Server::Server() : TCPNetworkNode(), messages(MAX_MESSAGES), buffer(4), bufferSi
 }
 Server::~Server() {
 	stop();
-}
-
-void sendToAll(TCPmessage&& message) {
-
-}
-
-
-void dummy() {
-
-	moodycamel::ReaderWriterQueue<int> q(100);       // Reserve space for at least 100 elements up front
-
-	q.enqueue(17);                       // Will allocate memory if the queue is full
-	bool succeeded = q.try_enqueue(18);  // Will only succeed if the queue has an empty slot (never allocates)
-	assert(succeeded);
-	int number;
-	succeeded = q.try_dequeue(number);  // Returns false if the queue was empty
-	assert(succeeded && number == 17);
-	// You can also peek at the front item of the queue (consumer only)
-	int* front = q.peek();
-	assert(*front == 18);
-	succeeded = q.try_dequeue(number);
-	assert(succeeded && number == 18);
-	front = q.peek();
-	assert(front == nullptr);           // Returns nullptr if the queue was empty
-
 }
