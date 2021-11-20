@@ -24,11 +24,17 @@ public:
 	char input_text[2048];//TODO: replace with text 
 	bool active{ false };
 	SDL_Rect cursorRect{};
+	SDL_Color txtColor{0,0,0,255};
+	Uint32 txtSize{ 18 };
+	SDL_Color bckgColor{ 106, 84, 231, 110 }; 
+	SDL_Color activeBckgColor{ 188, 179, 244, 150 };
+	const int txtMargin = 30;
+
 
 
 	InputBar(Renderer& renderer) : renderer{ renderer } {
 		font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
 	}
 	void setText(std::string&& newText) {
 		assert(newText.size() < 100);
@@ -44,17 +50,20 @@ public:
 	void reloadFont() {
 		FC_ClearFont(font);
 		//font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
 	}
 
 	void updatePosition() {
 	}
 	void handleEvents(SDL_Event const& event) {
 
-		const Uint8* keystates = SDL_GetKeyboardState(NULL);
+		if (!active) return;
 
+		const Uint8* keystates = SDL_GetKeyboardState(NULL);
+		
 		if (event.type == SDL_KEYDOWN)
 		{
+			
 			if (event.key.keysym.sym == SDLK_BACKSPACE)
 			{
 				U8_strdel(input_text, input_position - 1);
@@ -106,19 +115,33 @@ public:
 
 	void render() {
 
-		SDL_SetRenderDrawColor(renderer.renderer, 255, 255, 255, 128);
+		if (active) {
+			SDL_SetRenderDrawColor(renderer.renderer, activeBckgColor.r, activeBckgColor.g, activeBckgColor.b, activeBckgColor.a);
+		}
+		else {
+			SDL_SetRenderDrawColor(renderer.renderer, bckgColor.r, bckgColor.g, bckgColor.b, bckgColor.a);
+		}
 		SDL_SetRenderDrawBlendMode(renderer.renderer, SDL_BLENDMODE_BLEND);
 		SDL_RenderFillRect(renderer.renderer, &position);
+		
 
 		FC_Rect input_cursor_pos = FC_GetCharacterOffset(font, input_position, position.w, "%s", input_text);
 		cursorRect = FC_MakeRect(position.x + input_cursor_pos.x,
 			position.y + input_cursor_pos.y, input_cursor_pos.w, input_cursor_pos.h);
 
-		SDL_SetRenderDrawColor(renderer.renderer, 0, 0, 0, 255);//cursor color
-
-		if (SDL_GetTicks() % 1000 < 500)
-			SDL_RenderFillRect(renderer.renderer, &cursorRect);
-
+		SDL_SetRenderDrawColor(renderer.renderer, txtColor.r, txtColor.g, txtColor.b, txtColor.a);//cursor color
+		if (active) {
+			if (SDL_GetTicks() % 1000 < 500)
+				SDL_RenderFillRect(renderer.renderer, &cursorRect);
+		}
+		
+		if (active) {
+			SDL_SetRenderDrawColor(renderer.renderer, 0, 0, 255, 255);
+			SDL_RenderDrawRect(renderer.renderer, &position);
+		}
+		/*SDL_Rect txtPos{ position };
+		txtPos.x += txtMargin;
+		txtPos.w -= 2 * txtMargin;*/
 		FC_DrawBox(font, renderer.renderer, position, input_text);
 		//FC_DrawColumn(font, renderer.renderer, position.x, position.y, position.w, "Hugo\nAlex\nPhil");
 		//FC_Draw(font, renderer.renderer, 0, 0, "This is %s.\n It works.", "example text");

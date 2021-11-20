@@ -13,6 +13,7 @@
 #include "Client.h"
 #include <iostream>
 #include "ChatWindow.h"
+#include <algorithm>
 
 class Game {
 private:
@@ -87,11 +88,13 @@ public:
 	void handleNetwork(ChatWindow& chatWindow) {
 		//Show chat messages in the console
 		bool found{ false };
+		bool activity{ false };
 		if (isHost) {
 			//server.messages.lockQueue();
 			TCPmessage new_message;
 			while (server.messages.try_dequeue(new_message)){//!server.messages.empty()) {
 
+				activity = true;
 				//TCPmessage const& new_message{ server.messages.read(0) };
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
@@ -126,7 +129,7 @@ public:
 		else {
 			TCPmessage new_message;
 			while (client.receivedMessages.try_dequeue(new_message)){
-
+				activity = true;
 				//TODO: move message content instead of copying them
 				//for this we need a moody camel queue for all msg + a cirular queue for text messgaes only
 				switch (new_message.type) {
@@ -142,8 +145,9 @@ public:
 					for (int i = 0; i < playersInfos.size(); i++) {
 						if (found = (playersInfos[i].id == new_message.playerID)) {
 							std::cout << playersInfos[i].name << " : " << new_message.message << std::endl;
-							chatWindow.messages.enqueue(playersInfos[i].name + " : " + new_message.message);
-							removeFromVector(playersInfos, i);
+							std::string pname{ playersInfos[i].name };
+							std::transform(pname.begin(), pname.end(), pname.begin(), ::toupper);
+							chatWindow.messages.enqueue(pname + " : " + new_message.message);
 							break;
 						}
 					}
@@ -156,7 +160,7 @@ public:
 						if (found = (playersInfos[i].id == new_message.playerID)) {
 							std::cout << playersInfos[i].name << " s'est deconnecte." << std::endl;
 							chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
-
+							removeFromVector(playersInfos, i);
 							break;
 						}
 					}
@@ -175,6 +179,9 @@ public:
 					break;
 				}
 			}
+		}
+		if (activity) {
+			chatWindow.updateText();
 		}
 	}
 
@@ -199,9 +206,6 @@ public:
 
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);
-				if (!isHost) {
-					chatWindow.sendMessage(client);
-				}
 				updateMovementBeforeCollision(players, deltaTime);
 
 				//sliding must be checked before collisions !
@@ -213,7 +217,12 @@ public:
 
 				renderingManager.render(players, plateforms);
 				scoreBoard.render(playersInfos, myName);
+
+
 				chatWindow.render();
+
+
+
 				renderingManager.endRendering();
 			}
 			else
@@ -237,7 +246,9 @@ public:
 		//TODO: faire en sorte d'analyser tous les events de la file d'attente et pas juste le premier
 		
 		const Uint8* state = SDL_GetKeyboardState(NULL);
-		chatWin.handleEvents(e);
+		if (!isHost) {
+			chatWin.handleEvents(e, client);
+		}
 		//SDL_PumpEvents();
 		/*if (state[SDL_SCANCODE_UP]) {
 			player.newSpeed.y = playerMaxSpeed.y;

@@ -221,6 +221,7 @@ public:
 		data{ reinterpret_cast<char*> (std::malloc(sizeof(char) * initialSize)) },
 		size{ initialSize }
 	{
+		assert(initialSize >= 1);
 		if (data == nullptr)
 			throw std::bad_alloc();
 	}
@@ -228,6 +229,7 @@ public:
 		return size;
 	}
 	void realloc(unsigned int newSize) {
+		assert(newSize >= 1);
 		char* newPtr{ static_cast<char*>(std::realloc(data, sizeof(char)*newSize)) };
 		if (newPtr == nullptr) {
 			std::free(data);
@@ -237,6 +239,7 @@ public:
 		size = newSize;
 	}
 	void lossfulRealloc(unsigned int newSize) {
+		assert(newSize >= 1);
 		std::free(data);
 		data = reinterpret_cast<char*> (std::malloc(sizeof(char) * newSize));
 		if (data == nullptr)
