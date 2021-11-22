@@ -249,6 +249,7 @@ public:
 		if (!isHost) {
 			chatWin.handleEvents(e, client);
 		}
+		scoreBoard.handleEvents(e);
 		//SDL_PumpEvents();
 		/*if (state[SDL_SCANCODE_UP]) {
 			player.newSpeed.y = playerMaxSpeed.y;

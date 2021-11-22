@@ -84,6 +84,7 @@ void Server::acceptNewConnection() {
 
 void Server::loop() {
 
+
 	while (serverRunning) {
 
 		checkSockets(TCP_SLEEP_DURATION);
@@ -95,6 +96,15 @@ void Server::loop() {
 
 		if (connections.size() > 0) {
 			receiveMessagesFromClients();
+		}
+
+		for (int i = 0; i < connections.size(); i++) {
+			//disconnect client when timeout is expired
+			if (!isRemoteAlive(connections[i])) {
+				closeConnection(i);
+			}
+	
+			keepConnectionAlive(connections[i]);
 		}
 	}
 
@@ -126,7 +136,7 @@ void Server::start(Uint16 port) {
 	thread = std::thread(&Server::loop, this);
 }
 
-Server::Server() : TCPNetworkNode(), messages(MAX_MESSAGES), buffer(4), bufferSize{ 4 } {
+Server::Server() : TCPNetworkNode(), messages(MAX_MESSAGES) {
 	//start();
 }
 Server::~Server() {

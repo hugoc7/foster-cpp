@@ -23,6 +23,7 @@ public:
 	FC_Font* font;
 	Renderer& renderer;
 	std::string scoreText;
+	bool visible{ false };
 
 
 	ScoreBoard(Renderer& renderer) : renderer{ renderer } {
@@ -35,8 +36,15 @@ public:
 		//font = FC_CreateFont();
 		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
 	}
+	void handleEvents(SDL_Event const& event) {
+		const Uint8* state = SDL_GetKeyboardState(NULL);
+		visible = state[SDL_SCANCODE_TAB];
+	}
 
 	void render(std::vector<PlayerInfos> const& playerInfos, std::string const& myName) {
+
+		if (!visible) return;
+
 		//center the score board in the screen
 		position.x = renderer.window_w / 2 - position.w / 2;
 		position.y = renderer.window_h / 2 - position.h / 2;

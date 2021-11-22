@@ -25,16 +25,25 @@ struct TCPConnection {
 	int sendingBufferIndex{ -1 };
 	int recvBufferIndex{ NO_BUFFER };//-1 is a special value which means no current buffer
 
-	TCPConnection() {};
+	Uint32 lastLocalActivityDate;
+	Uint32 lastRemoteActivityDate;
+
+	TCPConnection() {
+		Uint32 now = SDL_GetTicks();
+		lastLocalActivityDate = lastRemoteActivityDate = now;
+	};
 
 	void setSocket(TCPsocketObject&& arg_tcpSocket, SocketSetObject& arg_socketSet) {
 		tcpSocket = std::move(arg_tcpSocket);
 		arg_socketSet.addSocket(tcpSocket);
+		lastLocalActivityDate = lastRemoteActivityDate = SDL_GetTicks();
 	}
 
 	TCPConnection(TCPsocketObject&& socket, SocketSetObject& socketSet) :
 		tcpSocket{ std::move(socket) } {
 		socketSet.addSocket(tcpSocket);
+		Uint32 now = SDL_GetTicks();
+		lastLocalActivityDate = lastRemoteActivityDate = now;
 	}
 
 	//NO COPY ALLOWED BECAUSE TCP SOCKET IS NOT COPYABLE
@@ -56,15 +65,22 @@ struct TCPConnection {
 class TCPNetworkNode {
 protected:
 	SocketSetObject socketSet;
+
 	const int MAX_SOCKETS;
+	const int SOCKET_TIMEOUT_DURATION{ 30 * 1000 };//60 seconds
+	const int SEND_STILL_ALIVE_PERIOD{ 20 * 1000 };//period of time for sending "still alive" message
 
 	//receiving buffers
 	std::vector<UniqueByteBuffer> recvBuffers;
 	std::vector<int> availableRecvBuffers;
 
+	//sending buffer
+	UniqueByteBuffer sendingBuffer;
+
 
 public:
-	TCPNetworkNode() : MAX_SOCKETS{ MAX_TCP_SOCKETS }, socketSet{ MAX_TCP_SOCKETS } {
+	TCPNetworkNode() : MAX_SOCKETS{ MAX_TCP_SOCKETS }, socketSet{ MAX_TCP_SOCKETS }, sendingBuffer(4) {
+		assert(SOCKET_TIMEOUT_DURATION > SEND_STILL_ALIVE_PERIOD);
 	}
 
 	TCPNetworkNode(TCPNetworkNode const&) = delete;
@@ -72,6 +88,20 @@ public:
 	TCPNetworkNode& operator=(TCPNetworkNode const&) = delete;
 	TCPNetworkNode& operator=(TCPNetworkNode&&) = delete;
 
+	void keepConnectionAlive(TCPConnection& connection) {
+		if (SDL_GetTicks() - connection.lastLocalActivityDate >= SEND_STILL_ALIVE_PERIOD) {
+			const Uint16 size{ 4 };
+			if (sendingBuffer.Size() < size) {
+				sendingBuffer.lossfulRealloc(size);
+			}
+			SDLNet_Write16((Uint16)size, sendingBuffer.get());
+			SDLNet_Write16((Uint16)TcpMsgType::STILL_ALIVE, sendingBuffer.get() + 2);
+			sendPacket(connection, size);
+		}
+	}
+	inline bool isRemoteAlive(TCPConnection const& connection) const {
+		return (SDL_GetTicks() - connection.lastRemoteActivityDate) <= SOCKET_TIMEOUT_DURATION;
+	}
 
 	int getAvailableRecvBufferIndex(unsigned int initSize) {
 		assert(initSize >= 4);
@@ -98,6 +128,10 @@ public:
 		connection.recvBufferIndex = NO_BUFFER;
 	}
 
+	inline int sendPacket(TCPConnection& connection, int packetSize) const {
+		connection.lastLocalActivityDate = SDL_GetTicks();
+		return connection.tcpSocket.send(sendingBuffer.get(), packetSize);
+	}
 
 	//check if the sockets in the set are ready, and so a future call to receivePacket wont block
 	//the number of sockets should be >= 1
@@ -154,6 +188,7 @@ public:
 		//packet is fully received
 		if (connection.bytesReceived == connection.packetSize) {
 			connection.bytesReceived = 0;
+			connection.lastRemoteActivityDate = SDL_GetTicks();
 			return true;
 		}
 		else {

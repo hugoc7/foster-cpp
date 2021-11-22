@@ -18,8 +18,6 @@ public:
 
 	std::thread thread{};
 	std::atomic<bool> clientRunning{ false };
-	UniqueByteBuffer buffer;
-	int bufferSize;
 	std::string playerName;
 	Uint16 playerID;//should be given by the server
 	bool isConnected{ false };
@@ -54,8 +52,8 @@ public:
 			if (receivePacket(connectionToServer)) {
 				//interpret the buffer content to create a msg object
 				TCPmessage newMessage(getRecvBuffer(connectionToServer.recvBufferIndex), connectionToServer.packetSize);
-				receivedMessages.enqueue(std::move(newMessage));
-
+				if (newMessage.type != TcpMsgType::STILL_ALIVE)
+					receivedMessages.enqueue(std::move(newMessage));
 			}
 	}
 	void sendChatMsg(std::string&& text) {
@@ -96,22 +94,21 @@ public:
 	void sendTCPmsg(TCPsocketObject const& tcpSock, TcpMsgType type, std::string str) {
 
 		if (type == TcpMsgType::DISCONNECTION_REQUEST) {
-			assert(bufferSize >= 4);
-			SDLNet_Write16((Uint16)4, buffer.get());
-			SDLNet_Write16((Uint16)type, buffer.get() + 2);
-			tcpSock.send(buffer.get(), 4);
+			assert(sendingBuffer.Size() >= 4);
+			SDLNet_Write16((Uint16)4, sendingBuffer.get());
+			SDLNet_Write16((Uint16)type, sendingBuffer.get() + 2);
+			sendPacket(connectionToServer, 4);
 		}
 		else {
 			Uint16 size = str.size() + 4;
 			assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-			if (bufferSize < size) {
-				bufferSize = size;
-				buffer.lossfulRealloc(size);
+			if (sendingBuffer.Size() < size) {
+				sendingBuffer.lossfulRealloc(size);
 			}
-			SDLNet_Write16((Uint16)size, buffer.get());
-			SDLNet_Write16((Uint16)type, buffer.get() + 2);
-			std::memcpy(buffer.get() + 4, str.c_str(), str.size());
-			tcpSock.send(buffer.get(), size);
+			SDLNet_Write16((Uint16)size, sendingBuffer.get());
+			SDLNet_Write16((Uint16)type, sendingBuffer.get() + 2);
+			std::memcpy(sendingBuffer.get() + 4, str.c_str(), str.size());
+			sendPacket(connectionToServer, size);
 		}
 	}
 
@@ -123,7 +120,8 @@ public:
 		int k = 5000;
 		TCPmessage msgToSend{};
 		try {
-			while ( clientRunning) {
+			//TODO: the thread should be joinable so if the loop end, just send a message to the main thread and wait
+			while (clientRunning && isRemoteAlive(connectionToServer)) {
 				//here we sleep a bit in select syscall (10ms ?) to avoid CPU crazy usage
 				checkSockets(TCP_SLEEP_DURATION);
 				receiveMsg();
@@ -132,6 +130,8 @@ public:
 				if (messagesToSend.try_dequeue(msgToSend)) {
 					sendTCPmsg(connectionToServer.tcpSocket, msgToSend.type, msgToSend.message);
 				}
+
+				keepConnectionAlive(connectionToServer);
 			}
 			std::cout << "Bye !" << std::endl;
 			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
@@ -141,10 +141,10 @@ public:
 			closeConnection();
 		}
 
-		std::this_thread::sleep_for(std::chrono::seconds{ 2 });
+		//std::this_thread::sleep_for(std::chrono::seconds{ 2 });
 	}
 
-	Client() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES), buffer(4), bufferSize{4} {
+	Client() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
 
 	}
 

@@ -41,9 +41,6 @@ public:
 	std::atomic<bool> serverRunning{ false };
 	TCPsocketObject listeningTcpSock;
 
-	UniqueByteBuffer buffer; //buffer for sending !
-	int bufferSize;
-
 	//SDLNet_SocketSet socketSet{ NULL };
 	//const int MAX_SOCKETS{16};
 
@@ -62,43 +59,41 @@ public:
 	void sendNewPlayerNotification(ClientConnection const& newClient) {
 		Uint16 size = newClient.playerName.size() + 4 + 2;
 		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_CONNECTION, buffer.get() + 2);
-		SDLNet_Write16((Uint16)newClient.playerID, buffer.get() + 4);
-		std::memcpy(buffer.get() + 6, newClient.playerName.c_str(), newClient.playerName.size());
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::NEW_CONNECTION, sendingBuffer.get() + 2);
+		SDLNet_Write16((Uint16)newClient.playerID, sendingBuffer.get() + 4);
+		std::memcpy(sendingBuffer.get() + 6, newClient.playerName.c_str(), newClient.playerName.size());
 
 		//for each client
 		for(int i =0;i< connections.size();i++) {
 			if (connections[i].playerID != newClient.playerID)
-				connections[i].tcpSocket.send(buffer.get(), size);
+				sendPacket(connections[i], size);
 		}
 	}
 
 	void sendChatMessage(std::string const& message, Uint16 senderPlayerID) {
 		Uint16 size = message.size() + 4 + 2;
 		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_CHAT_MESSAGE, buffer.get() + 2);
-		SDLNet_Write16((Uint16)senderPlayerID, buffer.get() + 4);
-		std::memcpy(buffer.get() + 6, message.c_str(), message.size());
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::NEW_CHAT_MESSAGE, sendingBuffer.get() + 2);
+		SDLNet_Write16((Uint16)senderPlayerID, sendingBuffer.get() + 4);
+		std::memcpy(sendingBuffer.get() + 6, message.c_str(), message.size());
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
-			if (connections[i].tcpSocket.send(buffer.get(), size) < size) {
+			if (sendPacket(connections[i], size) < size) {
 				std::cerr << "HOUSTON WE HAVE A PB";
 			}
 		}
 	}
 
-	void sendPlayerList(ClientConnection const& newClient) {
+	void sendPlayerList(ClientConnection& newClient) {
 	
 		//PACKET SCHEMA (unit = byte)
 		//packetSize(2) + type(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
@@ -108,38 +103,36 @@ public:
 			size += 1 + 2 + connections[i].playerName.size();
 		}
 		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::PLAYER_LIST, buffer.get() + 2);
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::PLAYER_LIST, sendingBuffer.get() + 2);
 		for (int i = 0; i < connections.size(); i++) {
-			SDLNet_Write16((Uint16)connections[i].playerID, buffer.get() + currentByteIndex);
+			SDLNet_Write16((Uint16)connections[i].playerID, sendingBuffer.get() + currentByteIndex);
 			currentByteIndex += 2;
 			assert(connections[i].playerName.size() <= 255);
-			buffer.get()[currentByteIndex] = static_cast<Uint8>(connections[i].playerName.size());
+			sendingBuffer.get()[currentByteIndex] = static_cast<Uint8>(connections[i].playerName.size());
 			currentByteIndex += 1;
-			std::memcpy(buffer.get() + currentByteIndex, connections[i].playerName.c_str(), connections[i].playerName.size());
+			std::memcpy(sendingBuffer.get() + currentByteIndex, connections[i].playerName.c_str(), connections[i].playerName.size());
 			currentByteIndex += connections[i].playerName.size();
 		}
-		newClient.tcpSocket.send(buffer.get(), size);
+		sendPacket(newClient, size);
 	}
 
 	//send to all a new disconnection msg
 	void sendPlayerDisconnectionNotification(Uint16 disconnectedPlayerID) {
 		const Uint16 size{ 6 };
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_DISCONNECTION, buffer.get() + 2);
-		SDLNet_Write16(disconnectedPlayerID, buffer.get() + 4);
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::NEW_DISCONNECTION, sendingBuffer.get() + 2);
+		SDLNet_Write16(disconnectedPlayerID, sendingBuffer.get() + 4);
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
-			connections[i].tcpSocket.send(buffer.get(), size);
+			sendPacket(connections[i], size);
 		}
 	}
 

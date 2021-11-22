@@ -31,9 +31,16 @@ enum class TcpMsgType {
 	NEW_DISCONNECTION = 4,
 	NEW_CHAT_MESSAGE = 5,
 	PLAYER_LIST = 6,
-	COUNT = 7,
+
+	//send by both
+	STILL_ALIVE = 7,
+	
+	//weird, used to communicat between thread...
+	END_OF_THREAD = 8,
+	
+	COUNT = 9,
 	//max = 255
-	EMPTY = 8
+	EMPTY = 10
 };
 
 struct TCPmessage {
@@ -70,6 +77,9 @@ struct TCPmessage {
 		unsigned int currentByteIndex{ 4 };
 
 		switch (type) {
+		case TcpMsgType::STILL_ALIVE:
+			//nothing
+			break;
 		case TcpMsgType::CONNECTION_REQUEST:
 			playerName.assign(buffer.get() + 4, bufferSize - 4);
 			break;
