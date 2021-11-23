@@ -50,10 +50,22 @@ public:
 	void acceptNewConnection();
 
 	void loop();
-	
+
 	void stop();
 
 	void start(Uint16 port = 9999);
+
+	//tell a client that he will be disconnected
+	void sendGoodbye(ClientConnection& client, std::string const& reason) {
+		Uint16 size = 4 + reason.size();
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
+		}
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::GOODBYE, sendingBuffer.get() + 2);
+		std::memcpy(sendingBuffer.get() + 4, reason.c_str(), reason.size());
+		sendPacket(client, size);
+	}
 
 	//send to all a new connection msg
 	void sendNewPlayerNotification(ClientConnection const& newClient) {
@@ -87,9 +99,7 @@ public:
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
-			if (sendPacket(connections[i], size) < size) {
-				std::cerr << "HOUSTON WE HAVE A PB";
-			}
+			sendPacket(connections[i], size);
 		}
 	}
 

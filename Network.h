@@ -16,6 +16,8 @@
 #define MAX_TCP_SOCKETS 16
 #define NO_BUFFER -1
 
+#define THREAD_CLOSING_DELAY 20
+
 std::string getIpAdressAsString(Uint32 ip);
 
 
@@ -31,18 +33,21 @@ enum class TcpMsgType {
 	NEW_DISCONNECTION = 4,
 	NEW_CHAT_MESSAGE = 5,
 	PLAYER_LIST = 6,
+	GOODBYE = 7,
 
 	//send by both
-	STILL_ALIVE = 7,
+	STILL_ALIVE = 8,
 	
 	//weird, used to communicat between thread...
-	END_OF_THREAD = 8,
+	END_OF_THREAD = 9,
+
 	
-	COUNT = 9,
+	COUNT = 10,
 	//max = 255
-	EMPTY = 10
+	EMPTY = 11
 };
 
+//TODO: refactor this class
 struct TCPmessage {
 	TcpMsgType type;
 	std::string message;//can be either a text message or a player name
@@ -79,6 +84,9 @@ struct TCPmessage {
 		switch (type) {
 		case TcpMsgType::STILL_ALIVE:
 			//nothing
+			break;
+		case TcpMsgType::GOODBYE:
+			message.assign(buffer.get() + 4, bufferSize - 4);
 			break;
 		case TcpMsgType::CONNECTION_REQUEST:
 			playerName.assign(buffer.get() + 4, bufferSize - 4);

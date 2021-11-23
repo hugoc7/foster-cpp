@@ -54,6 +54,9 @@ void Server::receiveMessagesFromClients() {
 					newMessage.playerID = connections[clientID].playerID;
 					sendChatMessage(newMessage.message, newMessage.playerID);
 					break;
+				case TcpMsgType::STILL_ALIVE:
+					//nothing
+					break;
 				}
 				//messages.lockQueue();
 				messages.enqueue(std::move(newMessage));
@@ -62,6 +65,7 @@ void Server::receiveMessagesFromClients() {
 		}
 		catch (std::runtime_error& e) {
 			std::cerr << e.what() << std::endl;
+			sendGoodbye(connections[clientID], std::string("Exception raised: ") + e.what());
 			closeConnection(clientID);
 		}
 	}
@@ -83,38 +87,60 @@ void Server::acceptNewConnection() {
 }
 
 void Server::loop() {
+	std::string stopReason{"Server has been stopped."};
+
+	try {
+		while (serverRunning) {
+
+			checkSockets(TCP_SLEEP_DURATION);
 
 
-	while (serverRunning) {
-
-		checkSockets(TCP_SLEEP_DURATION);
-
-
-		if (connections.size() < MAX_SOCKETS)
-			acceptNewConnection();
+			if (connections.size() < MAX_SOCKETS)
+				acceptNewConnection();
 
 
-		if (connections.size() > 0) {
-			receiveMessagesFromClients();
-		}
-
-		for (int i = 0; i < connections.size(); i++) {
-			//disconnect client when timeout is expired
-			if (!isRemoteAlive(connections[i])) {
-				closeConnection(i);
+			if (connections.size() > 0) {
+				receiveMessagesFromClients();
 			}
-	
-			keepConnectionAlive(connections[i]);
+
+			for (int i = 0; i < connections.size(); i++) {
+				//disconnect client when timeout is expired
+				if (!isRemoteAlive(connections[i])) {
+					sendGoodbye(connections[i], "Socket timeout expired");
+					closeConnection(i);
+				}
+
+				keepConnectionAlive(connections[i]);
+			}
 		}
 	}
-
+	catch (std::exception const& e) {
+		std::cerr << e.what() << std::endl;
+		messages.emplace(TcpMsgType::END_OF_THREAD, std::string("Exception: ") + e.what());
+		stopReason = e.what();
+	}
+	
+	//we try to say goodbye to all client
+	for (int i = 0; i < connections.size(); i++) {
+		try {
+		sendGoodbye(connections[i], stopReason);
+		closeConnection(i);
+		}
+		catch (...) {
+		}
+	}
+	
+	//wait until the main thread close this thread
+	while (serverRunning) {
+		SDL_Delay(THREAD_CLOSING_DELAY);
+	}
 }
 	
 void Server::stop() {
+	if (!serverRunning) return;
 	serverRunning = false;//std::atomic is noexcept
 	thread.join();
 
-	connections.clear();
 	socketSet.delSocket(listeningTcpSock);
 	listeningTcpSock.close();
 	//SDLNet_FreeSocketSet(socketSet);

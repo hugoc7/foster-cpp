@@ -12,12 +12,41 @@
 
 class Client : TCPNetworkNode {
 public:
-	TCPConnection connectionToServer;
 	moodycamel::ReaderWriterQueue<TCPmessage> receivedMessages;
 	moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;
+	std::atomic<bool> clientRunning{ false };
+
+	Client() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
+	}
+
+	~Client() {
+		stop();
+	}
+
+	void start(std::string const& myName, std::string const& hostname = "127.0.0.1", Uint16 port = 9999) {
+		if (clientRunning) return;
+
+		playerName = myName;
+		openConnectionToServer(hostname, port);
+		clientRunning = true;
+		thread = std::thread(&Client::loop, this);
+	}
+
+	void stop() {
+		if (!clientRunning) return;
+		clientRunning = false;//std::atomic is noexcept
+		thread.join();
+	}
+
+	void sendChatMsg(std::string&& text) {
+		messagesToSend.emplace(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
+	}
+
+
+protected:
+	TCPConnection connectionToServer;
 
 	std::thread thread{};
-	std::atomic<bool> clientRunning{ false };
 	std::string playerName;
 	Uint16 playerID;//should be given by the server
 	bool isConnected{ false };
@@ -32,7 +61,7 @@ public:
 		connectionToServer.setSocket(std::move(tcpSock), socketSet);
 
 		// get the remote IP and port
-		std::cout << "Connected to " << connectionToServer.tcpSocket.getPeerIP() 
+		std::cout << "Connected to " << connectionToServer.tcpSocket.getPeerIP()
 			<< " on port " << connectionToServer.tcpSocket.getPeerPort() << std::endl;
 
 		connectionToServer.recvBufferIndex = getAvailableRecvBufferIndex(INITIAL_TCP_BUFFER_SIZE);
@@ -56,9 +85,7 @@ public:
 					receivedMessages.enqueue(std::move(newMessage));
 			}
 	}
-	void sendChatMsg(std::string&& text) {
-		messagesToSend.emplace(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
-	}
+	
 
 	/*void sendDisconnectRequest() {
 		assert(bufferSize >= 4);
@@ -113,16 +140,15 @@ public:
 	}
 
 	void loop() {
-
-		sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::CONNECTION_REQUEST, playerName);
-		isConnected = true;
-
-		int k = 5000;
-		TCPmessage msgToSend{};
 		try {
+			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::CONNECTION_REQUEST, playerName);
+			isConnected = true;
+
+			TCPmessage msgToSend{};
+
 			//TODO: the thread should be joinable so if the loop end, just send a message to the main thread and wait
 			while (clientRunning && isRemoteAlive(connectionToServer)) {
-				//here we sleep a bit in select syscall (10ms ?) to avoid CPU crazy usage
+				//here we sleep a bit in select syscall (10ms ?) to avoid crazy CPU usage
 				checkSockets(TCP_SLEEP_DURATION);
 				receiveMsg();
 
@@ -133,40 +159,26 @@ public:
 
 				keepConnectionAlive(connectionToServer);
 			}
-			std::cout << "Bye !" << std::endl;
-			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
+
+			if (!isRemoteAlive(connectionToServer))
+				receivedMessages.emplace(TcpMsgType::END_OF_THREAD, "The remote host is not alive (timeout expired).");
 		}
 		catch (std::exception const& e) {
 			std::cerr << e.what() << std::endl;
+			receivedMessages.emplace(TcpMsgType::END_OF_THREAD, std::string("Exception: ") + e.what());
+		}
+		try {
 			closeConnection();
 		}
+		catch(...){
+		}
+		//wait until the main thread close this thread
+		while (clientRunning) {
+			SDL_Delay(THREAD_CLOSING_DELAY);
+		}
 
-		//std::this_thread::sleep_for(std::chrono::seconds{ 2 });
 	}
 
-	Client() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
-
-	}
-
-	~Client() {
-		stop();
-	}
-
-	void stop() {
-		if (!clientRunning) return;
-		clientRunning = false;//std::atomic is noexcept
-		thread.join();
-		connectionToServer.close(socketSet);
-	}
-
-
-	void start(std::string const& myName, std::string const& hostname = "127.0.0.1", Uint16 port = 9999) {
-		if (clientRunning) return;
-
-		playerName = myName;
-		openConnectionToServer(hostname, port);
-		clientRunning = true;
-		thread = std::thread(&Client::loop, this);
-	}
+	
 
 };

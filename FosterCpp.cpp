@@ -144,10 +144,12 @@ int main(int argc, char* args[])
     Uint16 port;
     std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
     std::cin >> choice;
-    std::cout << "IP adress: ";
+    /*std::cout << "IP adress: ";
     std::cin >> ip;
     std::cout << "Port number: ";
-    std::cin >> port;
+    std::cin >> port;*/
+    ip = "localhost";
+    port = 7777;
     
     registerAllComponents();
     Game game(choice == 1, ip, port);

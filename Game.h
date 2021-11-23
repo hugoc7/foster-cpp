@@ -98,6 +98,10 @@ public:
 				//TCPmessage const& new_message{ server.messages.read(0) };
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
+				case TcpMsgType::END_OF_THREAD:
+					chatWindow.messages.enqueue("Arret du serveur suite à une erreur réseau: " + std::move(new_message.message));
+					server.stop();
+					break;
 				case TcpMsgType::SEND_CHAT_MESSAGE:
 					std::cout << new_message.playerName << ": " << new_message.message << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + ": " + new_message.message);
@@ -121,6 +125,10 @@ public:
 					}
 					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
 					break;
+				default:
+					std::cerr << "Message TCP non traite par le jeu";
+					//TODO: handle this error in TCPclient and server !
+					break;
 				}
 				//server.messages.dequeue();
 			}
@@ -131,9 +139,17 @@ public:
 			while (client.receivedMessages.try_dequeue(new_message)){
 				activity = true;
 				//TODO: move message content instead of copying them
-				//for this we need a moody camel queue for all msg + a cirular queue for text messgaes only
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY CLIENT
+				case TcpMsgType::END_OF_THREAD:
+					chatWindow.messages.enqueue("Vous avez ete deconnecte. Raison: " + std::move(new_message.message));
+					client.stop();
+					break;
+				case TcpMsgType::GOODBYE:
+					chatWindow.messages.enqueue("Vous avez ete deconnecte par le serveur. Raison: " 
+						+ std::move(new_message.message));
+					client.stop();
+					break;
 				case TcpMsgType::NEW_CONNECTION:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
