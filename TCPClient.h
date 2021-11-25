@@ -10,16 +10,16 @@
 
 
 
-class Client : TCPNetworkNode {
+class TCPClient : TCPNetworkNode {
 public:
 	moodycamel::ReaderWriterQueue<TCPmessage> receivedMessages;
 	moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;
 	std::atomic<bool> clientRunning{ false };
 
-	Client() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
+	TCPClient() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
 	}
 
-	~Client() {
+	~TCPClient() {
 		stop();
 	}
 
@@ -29,7 +29,7 @@ public:
 		playerName = myName;
 		openConnectionToServer(hostname, port);
 		clientRunning = true;
-		thread = std::thread(&Client::loop, this);
+		thread = std::thread(&TCPClient::loop, this);
 	}
 
 	void stop() {

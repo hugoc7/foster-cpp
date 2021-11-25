@@ -1,5 +1,7 @@
 #pragma once
 
+#define MAX_UDP_PACKET_SIZE 1200//MTU
+
 
 //should a method of the server classvz
 /*

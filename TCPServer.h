@@ -30,7 +30,7 @@ struct ClientConnection : TCPConnection {
 };
 
 
-class Server : TCPNetworkNode {
+class TCPServer : TCPNetworkNode {
 public:
 	std::vector<ClientConnection> connections;
 	std::chrono::milliseconds delayForNewConnection{ 500 };
@@ -148,8 +148,8 @@ public:
 
 	//void sendToAll(TCPmessage&& message);
 
-	Server();
-	~Server();
+	TCPServer();
+	~TCPServer();
 private:
 	void closeConnection(int clientID);
 

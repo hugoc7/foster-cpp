@@ -15,6 +15,7 @@ std::string getIpAdressAsString(Uint32 ip);
 
 class IPaddressObject {
 	friend class TCPsocketObject;
+	friend class UDPsocketObject;
 private:
 	IPaddress ip;
 public:
@@ -197,3 +198,111 @@ public:
 		}
 	}
 };
+
+struct UDPpacketObject {
+public:
+	UDPpacket* packet{ NULL };
+	UDPpacketObject() noexcept {
+	}
+	UDPpacketObject(int size) {
+		assert(size > 0);
+		if ((packet = SDLNet_AllocPacket(size)) == NULL) {
+			throw std::bad_alloc();
+		}
+	}
+	~UDPpacketObject() noexcept {
+		if (packet != NULL)
+			SDLNet_FreePacket(packet);
+	}
+
+	void resize(int size) {
+		assert(size > 0);
+		assert(packet != NULL);
+		if (SDLNet_ResizePacket(packet, size) < size) {
+			throw std::bad_alloc();
+		}
+	}
+
+	//No copy allowed
+	UDPpacketObject(UDPpacketObject const& other) = delete;
+	UDPpacketObject& operator=(UDPpacketObject const& other) = delete;
+
+	//Move allowed
+	UDPpacketObject(UDPpacketObject&& other) noexcept :
+		packet{ other.packet }
+	{
+		other.packet = NULL;
+	}
+	UDPpacketObject& operator=(UDPpacketObject&& other) noexcept {
+		packet = other.packet;
+		other.packet = NULL;
+		return *this;
+	}
+};
+
+
+class UDPsocketObject {
+protected:
+	UDPsocket socket{NULL};
+public:
+	~UDPsocketObject() noexcept {
+		if (socket != NULL) {
+			SDLNet_UDP_Close(socket);
+		}
+	}
+	void open(Uint16 port) {
+		socket = SDLNet_UDP_Open(port);
+		if (socket == NULL)
+			throw std::runtime_error(std::string("SDLNet_UDP_Open ") + SDLNet_GetError());
+	}
+	void close() noexcept {
+		assert(socket != NULL);
+		SDLNet_UDP_Close(socket);
+	}
+	int bind(int channel, IPaddressObject const& ip) {
+		assert(socket != NULL);
+		int ret;
+		if ((ret = SDLNet_UDP_Bind(socket, channel, &ip.ip)) == -1) {
+			throw std::runtime_error(std::string("SDLNet_UDP_Bind ") + SDLNet_GetError());
+		}
+		return ret;
+	}
+	void unbind(int channel) noexcept {
+		assert(socket != NULL);
+		SDLNet_UDP_Unbind(socket, channel);
+	}
+	//assume that the channel is bound to ONLY 1 destination !!
+	void send(int channel, UDPpacketObject& packet) {
+		assert(socket != NULL);
+		if(SDLNet_UDP_Send(socket, channel, packet.packet) != 1)
+			throw std::runtime_error(std::string("SDLNet_UDP_Send ") + SDLNet_GetError());
+	}
+	bool recv(UDPpacketObject& packet) {
+		assert(socket != NULL);
+		int ret;
+		if ((ret = SDLNet_UDP_Recv(socket, packet.packet)) == -1) {
+			throw std::runtime_error(std::string("SDLNet_UDP_Recv ") + SDLNet_GetError());
+		}
+		return static_cast<bool>(ret);
+	}
+	std::string getPeerIP(int channel) const {
+		assert(socket != NULL);
+		IPaddress* remote_ip{ NULL };
+		remote_ip = SDLNet_UDP_GetPeerAddress(socket, channel);
+		if (!remote_ip) {
+			throw std::runtime_error(std::string("SDLNet_UDP_GetPeerAddress ") + SDLNet_GetError());
+		}
+		return getIpAdressAsString(remote_ip->host);
+	}
+	Uint16 getPeerPort(int channel) const {
+		assert(socket != NULL);
+		IPaddress* remote_ip{ NULL };
+		remote_ip = SDLNet_UDP_GetPeerAddress(socket, channel);
+		if (!remote_ip) {
+			throw std::runtime_error(std::string("SDLNet_TCP_GetPeerAddress ") + SDLNet_GetError());
+		}
+		return remote_ip->port;
+	}
+	
+};
+

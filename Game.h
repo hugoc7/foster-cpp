@@ -8,9 +8,9 @@
 #include "SDL_events.h"
 #include "Rendering.h"
 #include <fstream>
-#include "Server.h"
+#include "TCPServer.h"
 #include "ScoreBoard.h"
-#include "Client.h"
+#include "TCPClient.h"
 #include <iostream>
 #include "ChatWindow.h"
 #include <algorithm>
@@ -32,8 +32,8 @@ private:
 
 	//Network
 	std::vector<PlayerInfos> playersInfos;
-	Server server;
-	Client client;
+	TCPServer server;
+	TCPClient client;
 	bool isHost;
 	std::string myName;
 	std::string ip;

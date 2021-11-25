@@ -8,11 +8,13 @@
 #include "Game.h"
 #include "Components.h"
 #include "SDL_net.h"
-#include "Server.h"
-#include "Client.h"
+#include "TCPServer.h"
+#include "TCPClient.h"
 #include <map>
 #include <thread>
 #include "Containers.h"
+#include "UDPServer.h"
+#include "UDPClient.h"
 
 /*
 struct Velocity {
@@ -144,16 +146,29 @@ int main(int argc, char* args[])
     Uint16 port;
     std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
     std::cin >> choice;
+    //UDP:
+    if (choice == 1) {
+        UDPServer serv;
+        serv.loop();
+    }
+    else {
+        UDPClient client;
+        client.loop(8881);
+    }
+
+
+    //TCP:
     /*std::cout << "IP adress: ";
     std::cin >> ip;
     std::cout << "Port number: ";
     std::cin >> port;*/
-    ip = "localhost";
+
+    /*ip = "localhost";
     port = 7777;
     
     registerAllComponents();
     Game game(choice == 1, ip, port);
-    game.gameLoop();
+    game.gameLoop();*/
  
 
    /* testCollisions();

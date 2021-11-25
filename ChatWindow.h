@@ -72,7 +72,7 @@ public:
 	}
 	
 
-	inline void handleEvents(SDL_Event const& event, Client& client) {
+	inline void handleEvents(SDL_Event const& event, TCPClient& client) {
 		inputBar.handleEvents(event);
 
 		if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_RETURN) {

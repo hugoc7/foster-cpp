@@ -1,6 +1,6 @@
-#include "Server.h"
+#include "TCPServer.h"
 
-void Server::closeConnection(int clientID) {
+void TCPServer::closeConnection(int clientID) {
 	Uint16 playerID{ connections[clientID].playerID };
 	if (connections[clientID].connectedToGame) {
 		messages.emplace(TcpMsgType::DISCONNECTION_REQUEST,
@@ -14,7 +14,7 @@ void Server::closeConnection(int clientID) {
 }
 
 ///@brief receive TCP messages from all clients (non blocking)
-void Server::receiveMessagesFromClients() {
+void TCPServer::receiveMessagesFromClients() {
 	//for each client
 	for (int clientID = 0; clientID < connections.size(); clientID++) {
 		try {
@@ -72,7 +72,7 @@ void Server::receiveMessagesFromClients() {
 }
 
 
-void Server::acceptNewConnection() {
+void TCPServer::acceptNewConnection() {
 	// accept a connection coming in on server_tcpsock
 	TCPsocketObject new_tcpsock;
 
@@ -86,7 +86,7 @@ void Server::acceptNewConnection() {
 	}
 }
 
-void Server::loop() {
+void TCPServer::loop() {
 	std::string stopReason{"Server has been stopped."};
 
 	try {
@@ -136,7 +136,7 @@ void Server::loop() {
 	}
 }
 	
-void Server::stop() {
+void TCPServer::stop() {
 	if (!serverRunning) return;
 	serverRunning = false;//std::atomic is noexcept
 	thread.join();
@@ -147,7 +147,7 @@ void Server::stop() {
 }
 
 
-void Server::start(Uint16 port) {
+void TCPServer::start(Uint16 port) {
 	if (serverRunning) return;
 
 	// create a listening TCP socket  (server)
@@ -159,12 +159,12 @@ void Server::start(Uint16 port) {
 
 	std::cout << "Starting server ..." << std::endl;
 	serverRunning = true;
-	thread = std::thread(&Server::loop, this);
+	thread = std::thread(&TCPServer::loop, this);
 }
 
-Server::Server() : TCPNetworkNode(), messages(MAX_MESSAGES) {
+TCPServer::TCPServer() : TCPNetworkNode(), messages(MAX_MESSAGES) {
 	//start();
 }
-Server::~Server() {
+TCPServer::~TCPServer() {
 	stop();
 }
