@@ -37,6 +37,7 @@ void TCPServer::receiveMessagesFromClients() {
 					newMessage.playerID = connections[clientID].playerID;
 					connections[clientID].connectedToGame = false;
 					closeConnection(clientID);
+					messages.enqueue(std::move(newMessage));
 					break;
 
 				case TcpMsgType::CONNECTION_REQUEST:
@@ -44,8 +45,10 @@ void TCPServer::receiveMessagesFromClients() {
 					connections[clientID].connectedToGame = true;
 					connections[clientID].playerID = generatePlayerID();
 					newMessage.playerID = connections[clientID].playerID;
+					newMessage.clientIp = std::move(connections[clientID].tcpSocket.getPeerIP());
 					sendPlayerList(connections[clientID]);
 					sendNewPlayerNotification(connections[clientID]);
+					messages.enqueue(std::move(newMessage));
 					break;
 
 				case TcpMsgType::SEND_CHAT_MESSAGE:
@@ -53,14 +56,12 @@ void TCPServer::receiveMessagesFromClients() {
 					assert(connections[clientID].playerID >= 0);
 					newMessage.playerID = connections[clientID].playerID;
 					sendChatMessage(newMessage.message, newMessage.playerID);
+					messages.enqueue(std::move(newMessage));
 					break;
 				case TcpMsgType::STILL_ALIVE:
 					//nothing
 					break;
 				}
-				//messages.lockQueue();
-				messages.enqueue(std::move(newMessage));
-				//messages.unlockQueue();
 			}
 		}
 		catch (std::runtime_error& e) {
@@ -80,8 +81,8 @@ void TCPServer::acceptNewConnection() {
 
 	if (listeningTcpSock.accept(new_tcpsock)) {
 
-		/*std::cout << "New connection accepted with " << new_tcpsock.getPeerIP() 
-			<< " on his port " << new_tcpsock.getPeerPort() << std::endl;*/
+		std::cout << "New connection accepted with " << new_tcpsock.getPeerIP() 
+			<< " on his port " << new_tcpsock.getPeerPort() << std::endl;
 		connections.emplace_back(std::move(new_tcpsock), std::ref(socketSet));//error here
 	}
 }

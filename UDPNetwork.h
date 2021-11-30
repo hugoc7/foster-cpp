@@ -2,6 +2,79 @@
 
 #define MAX_UDP_PACKET_SIZE 1200//MTU
 
+#include "SDLNetCpp.h"
+#include "Packing.h"
+#include "CRC.h"
+
+struct NetworkEntity {
+	Uint8 version;
+	float x;
+	float y;
+	Uint8 type;
+};
+
+class UDPNetworkNode {
+protected:
+	UDPsocketObject socket;
+	//TODO: replace running (not correct !) by a 8-bit state variable with different states, LAUNCHING, RUNNING, QUITING ETC...
+	std::atomic<bool> running{ false };//only main thread can modify it
+	std::atomic<bool> error{ false };//only udp network thread can modify it 
+	std::mutex myMutex;
+	std::thread thread;
+	Uint16 myPort;
+public:
+	std::unique_lock<std::mutex> myLock;
+
+	//The sequence number of the last packet received, used to check if what we received is more recent
+	//Uint16 lastIncomingPacketNumber{ 0xFFFF };
+	//The sequence number of the last packet sent
+	//Uint16 outgoingPacketNumber{ 0 };
+
+	std::vector<NetworkEntity> netEntities;
+	
+	UDPNetworkNode() : myLock(myMutex, std::defer_lock) {};
+
+
+
+	//receive a valid packet (correct checksum and sequence number)
+	/*bool receive(UDPpacketObject& packet) {
+		if (!socket.recv(packet)) return false;
+
+		assert(packet.packet->len > 4 && packet.packet->len <= MAX_UDP_PACKET_SIZE);
+
+		//Verify checksum for integrity (against random errors)
+		if (!verifyChecksum(packet)) return false;
+
+		Uint16 incomingPacketNumber = Packing::ReadUint16(packet.packet->data);
+		if (!isGreaterModulo(incomingPacketNumber, lastIncomingPacketNumber)) return false;
+
+		lastIncomingPacketNumber = incomingPacketNumber;
+		return true;
+	}*/
+	//return true if a > b modulo 2 pow 16
+	bool isGreaterModulo(Uint16 a, Uint16 b)
+	{
+		if (a > b)
+			return (a - b) <= 32768;
+		else if (b > a)
+			return (b - a) > 32768;
+		else
+			return false;
+	}
+	//calculate a 16 bit checksum on a UDP packet
+	void calculateChecksum(UDPpacketObject& packet) {
+		assert(packet.packet->len >= 3);
+		Uint16 checksum = CRC::Calculate(packet.packet->data, packet.packet->len-2, CRC::CRC_16_ARC());
+		Packing::Write(checksum, &packet.packet->data[packet.packet->len - 2]);
+	}
+	//verify a 16 bit checksum on a UDP packet
+	bool verifyChecksum(UDPpacketObject& packet) {
+		assert(packet.packet->len >= 3);
+		Uint16 checksum = CRC::Calculate(packet.packet->data, packet.packet->len - 2, CRC::CRC_16_ARC());
+		return checksum == Packing::ReadUint16(&packet.packet->data[packet.packet->len - 2]);
+	}
+
+};
 
 //should a method of the server classvz
 /*

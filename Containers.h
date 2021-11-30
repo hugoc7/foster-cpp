@@ -2,6 +2,11 @@
 
 #include <vector>
 #include <mutex>
+#include <cstddef>
+#include "SDL_Net.h"
+#include "struct/struct.h"
+#include <cassert>
+
 
 //UTILISE PAR LES SYSTEMES DE L'ECS
 template <typename T>
@@ -198,10 +203,10 @@ public:
 		if (full()) {
 			dequeue();
 		}
-		assert(tail >= 0 && tail < v.size(), "enqueue");
+		assert(tail >= 0 && tail < v.size());
 		v[tail] = std::forward<T>(elementToEnq);
 		tail = (tail + 1) % v.size();
-		assert(tail >= 0 && tail < v.size(), "enqueue");
+		assert(tail >= 0 && tail < v.size());
 
 	}
 	void dequeue() {
@@ -212,13 +217,14 @@ public:
 	}
 };
 
+
 class UniqueByteBuffer {
 private:
-	char* data;//could be std::byte* ?
-	unsigned int size;
+	Uint8* data{NULL};//could be std::byte* ?
+	unsigned int size{0};
 public:
 	UniqueByteBuffer(unsigned int initialSize) :
-		data{ reinterpret_cast<char*> (std::malloc(sizeof(char) * initialSize)) },
+		data{ reinterpret_cast<Uint8*> (std::malloc(initialSize)) },
 		size{ initialSize }
 	{
 		assert(initialSize >= 1);
@@ -227,10 +233,36 @@ public:
 	}
 	unsigned int Size() const noexcept {
 		return size;
+	}/*
+	void Write(Uint16 n, int pos) {
+		assert(pos >= 0 && pos < size&& data != nullptr);
+		SDLNet_Write16(n, &data[pos]);
 	}
+	void Write(Uint32 n, int pos) {
+		assert(pos >= 0 && pos < size&& data != nullptr);
+		SDLNet_Write32(n, &data[pos]);
+	}
+	void Write(float f, int pos) {
+		assert(pos >= 0 && pos + 3 < size && data != nullptr);
+		struct_pack(&data[pos], "f", f);
+	}
+	float ReadFloat(int pos) {
+		assert(pos >= 0 && pos + 3 < size && data != nullptr);
+		float res;
+		struct_unpack(&data[pos], "f", &res);
+		return res;
+	}
+	Uint32 ReadUint32(int pos) {
+		assert(pos >= 0 && pos < size&& data != nullptr);
+		return SDLNet_Read32(&data[pos]);
+	}
+	Uint16 ReadUint16(int pos) {
+		assert(pos >= 0 && pos < size&& data != nullptr);
+		return SDLNet_Read16(&data[pos]);
+	}*/
 	void realloc(unsigned int newSize) {
 		assert(newSize >= 1);
-		char* newPtr{ static_cast<char*>(std::realloc(data, sizeof(char)*newSize)) };
+		Uint8* newPtr{ static_cast<Uint8*>(std::realloc(data, newSize)) };
 		if (newPtr == nullptr) {
 			std::free(data);
 			throw std::bad_alloc();
@@ -241,12 +273,13 @@ public:
 	void lossfulRealloc(unsigned int newSize) {
 		assert(newSize >= 1);
 		std::free(data);
-		data = reinterpret_cast<char*> (std::malloc(sizeof(char) * newSize));
+		data = reinterpret_cast<Uint8*> (std::malloc(newSize));
 		if (data == nullptr)
 			throw std::bad_alloc();
 		size = newSize;
 	}
-	char* get() const noexcept {
+	Uint8* get() const noexcept {
+		assert(data != NULL);
 		return data;
 	}
 
@@ -268,4 +301,49 @@ public:
 		return *this;
 	}
 
+};
+
+//A sparsed vector = un vecteur à trous
+//template<typename T>
+class SparsedIndicesVector {
+private:
+	std::vector<int> vec;
+	int size{0};
+public:
+	SparsedIndicesVector(int capacity) {
+		vec.reserve(capacity);
+		for (int i = 0; i < vec.size(); i++) {
+			vec.push_back(i);
+		}
+	}
+	//no modification possible
+	int operator[](int pos) const {
+		return vec[pos];
+	}
+	int Size() const {
+		return size;
+	}
+	int Add() {
+		if (size < vec.size()) {
+			return vec[size++];
+		}
+		else {
+			assert(size == vec.size());
+			vec.push_back(size);
+			return size++;
+		}
+	}
+	void Remove(int index) {
+		assert(index < size && !vec.empty());
+		int realIndex = 0;
+		while (vec[realIndex] != index) {
+			realIndex++;
+			assert(realIndex < size);
+		}
+		if (realIndex != size - 1) {
+			vec[realIndex] = vec[size - 1];
+			vec[size - 1] = index;
+		}
+		size--;
+	}
 };

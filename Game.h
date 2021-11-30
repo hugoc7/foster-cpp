@@ -14,6 +14,8 @@
 #include <iostream>
 #include "ChatWindow.h"
 #include <algorithm>
+#include "UDPClient.h"
+#include "UDPServer.h"
 
 class Game {
 private:
@@ -38,6 +40,9 @@ private:
 	std::string myName;
 	std::string ip;
 	Uint16 port;
+	Uint16 udpPort;
+	UDPClient udpClient;
+	UDPServer udpServer;
 
 	//GUI
 	ScoreBoard scoreBoard;
@@ -46,13 +51,14 @@ private:
 
 
 public:
-	Game(bool isHost, std::string const& ip, Uint16 port = 9999) :
+	Game(bool isHost, std::string const& ip, Uint16 port, Uint16 udpPort) :
 		isHost{ isHost },
 		renderingManager(),
 		scoreBoard(renderingManager),
 		chatWindow(renderingManager),
 		ip{ip},
-		port{port}
+		port{port},
+		udpPort{udpPort}
 	{
 		player = ecs.addEntity();
 		ecs.addComponent<MovingObject>(player, 4.5, 7);
@@ -111,6 +117,8 @@ public:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+					std::cout << "New UDP client: " << new_message.clientIp << " : " << new_message.udpPort;
+					udpServer.addClient(new_message.clientIp, new_message.udpPort);
 					break;
 
 				case TcpMsgType::DISCONNECTION_REQUEST:
@@ -206,11 +214,13 @@ public:
 		//Network
 		if (isHost) {
 			server.start(port);
+			udpServer.start(8880);
 		}
 		else {
 			std::cout << "\nEnter YOUR NAME: ";
 			std::cin >> myName;
-			client.start(myName, ip, port);
+			client.start(myName, ip, port, udpPort);
+			udpClient.start(ip, 8880, udpPort);
 
 		}
 
@@ -248,6 +258,8 @@ public:
 		//Close Network threads
 		server.stop();
 		client.stop();
+		udpClient.stop();
+		udpServer.stop();
 	};
 	void updateDeltaTime() {
 		currentTime = SDL_GetTicks();
@@ -266,16 +278,7 @@ public:
 			chatWin.handleEvents(e, client);
 		}
 		scoreBoard.handleEvents(e);
-		//SDL_PumpEvents();
-		/*if (state[SDL_SCANCODE_UP]) {
-			player.newSpeed.y = playerMaxSpeed.y;
-		}
-		else if (state[SDL_SCANCODE_DOWN]) {
-			player.newSpeed.y = -1.0f * playerMaxSpeed.y;
-		}
-		else {
-			player.newSpeed.y = 0;
-		}*/
+
 		if (state[SDL_SCANCODE_RIGHT]) {
 			player.newSpeed.x = playerMaxSpeed.x;
 		}

@@ -5,6 +5,7 @@
 #include <string>
 #include <cassert>
 #include "Containers.h"
+#include "Packing.h"
 
 #define MAX_MESSAGES 100
 #define MAX_16_BIT_VALUE 65535
@@ -47,12 +48,16 @@ enum class TcpMsgType {
 	EMPTY = 11
 };
 
-//TODO: refactor this class
+//TODO: refactor this class : union ? std::variant ?
 struct TCPmessage {
 	TcpMsgType type;
 	std::string message;//can be either a text message or a player name
 	std::string playerName;
 	Uint16 playerID{};//unique ID of a player related to this message (sender/receiver)
+	
+	//only used by server for connection request
+	Uint16 udpPort;
+	std::string clientIp;
 
 	//only for player list packet, but TODO it should be generalized to all packets
 	std::vector<std::string> playerNames;
@@ -86,13 +91,14 @@ struct TCPmessage {
 			//nothing
 			break;
 		case TcpMsgType::GOODBYE:
-			message.assign(buffer.get() + 4, bufferSize - 4);
+			message.assign(reinterpret_cast<const char*>(buffer.get()) + 4, bufferSize - 4);
 			break;
 		case TcpMsgType::CONNECTION_REQUEST:
-			playerName.assign(buffer.get() + 4, bufferSize - 4);
+			udpPort = Packing::ReadUint16(&buffer.get()[4]);
+			playerName.assign(reinterpret_cast<const char*>(buffer.get()) + 6, bufferSize - 6);
 			break;
 		case TcpMsgType::SEND_CHAT_MESSAGE:
-			message.assign(buffer.get() + 4, bufferSize - 4);
+			message.assign(reinterpret_cast<const char*>(buffer.get()) + 4, bufferSize - 4);
 			break;
 		case TcpMsgType::DISCONNECTION_REQUEST:
 			//nothing
@@ -101,7 +107,7 @@ struct TCPmessage {
 			if (bufferSize < 6)
 				throw std::runtime_error("Received invalid TCP message (NEW_CONNECTION) : no player ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
-			playerName.assign(buffer.get() + 6, bufferSize - 6u);
+			playerName.assign(reinterpret_cast<const char*>(buffer.get()) + 6, bufferSize - 6u);
 			break;
 		case TcpMsgType::NEW_DISCONNECTION:
 			if (bufferSize < 6)
@@ -112,7 +118,7 @@ struct TCPmessage {
 			if (bufferSize < 6)
 				throw std::runtime_error("Received invalid TCP message (NEW_CHAT_MESSAGE) : no player ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
-			message.assign(buffer.get() + 6, bufferSize - 6u);
+			message.assign(reinterpret_cast<const char*>(buffer.get()) + 6, bufferSize - 6u);
 			break;
 		case TcpMsgType::PLAYER_LIST:
 			//PACKET SCHEMA (unit = byte)
@@ -131,7 +137,7 @@ struct TCPmessage {
 				currentByteIndex += 1;
 				if (currentByteIndex + nameSize - 1 >= bufferSize)
 					throw std::runtime_error("Error reading player list packet (playerName)");
-				playerNames.emplace_back(buffer.get() + currentByteIndex, nameSize);
+				playerNames.emplace_back(reinterpret_cast<char*>(buffer.get() + currentByteIndex), nameSize);
 
 				currentByteIndex += nameSize;
 			}

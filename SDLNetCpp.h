@@ -14,11 +14,11 @@
 std::string getIpAdressAsString(Uint32 ip);
 
 class IPaddressObject {
-	friend class TCPsocketObject;
-	friend class UDPsocketObject;
-private:
-	IPaddress ip;
+	//friend class TCPsocketObject;
+	//friend class UDPsocketObject;
 public:
+	IPaddress ip;
+
 	IPaddressObject() = default;
 	void resolveHost(Uint16 port) {
 		if (SDLNet_ResolveHost(&ip, NULL, port) == -1) {
@@ -223,6 +223,7 @@ public:
 		}
 	}
 
+
 	//No copy allowed
 	UDPpacketObject(UDPpacketObject const& other) = delete;
 	UDPpacketObject& operator=(UDPpacketObject const& other) = delete;
@@ -259,10 +260,13 @@ public:
 		assert(socket != NULL);
 		SDLNet_UDP_Close(socket);
 	}
-	int bind(int channel, IPaddressObject const& ip) {
+	inline int bind(int channel, IPaddressObject const& ip) {
+		return bind(channel, ip.ip);
+	}
+	int bind(int channel, IPaddress const& ip) {
 		assert(socket != NULL);
 		int ret;
-		if ((ret = SDLNet_UDP_Bind(socket, channel, &ip.ip)) == -1) {
+		if ((ret = SDLNet_UDP_Bind(socket, channel, &ip)) == -1) {
 			throw std::runtime_error(std::string("SDLNet_UDP_Bind ") + SDLNet_GetError());
 		}
 		return ret;

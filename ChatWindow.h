@@ -57,7 +57,7 @@ public:
 		int first = 0;
 
 		UniqueByteBuffer buffer(chatText.size() + chatText.size() / minCharsPerLine + 1);
-		int n = FC_GetWrappedText(font, buffer.get(), buffer.Size(), maxWidth, chatText.c_str());
+		int n = FC_GetWrappedText(font, reinterpret_cast<char*>(buffer.get()), buffer.Size(), maxWidth, chatText.c_str());
 
 		for (int i = n - 1; i >= 0; i--) {
 			if (buffer.get()[i] == '\n') {

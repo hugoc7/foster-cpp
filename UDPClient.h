@@ -2,35 +2,110 @@
 #include "SDLNetCpp.h"
 #include "UDPNetwork.h"
 
+
 //just echo server for now ...
-class UDPClient {
+class UDPClient : UDPNetworkNode {
+protected:
+	
+	Uint16 outgoingPacketNumber;
+	Uint16 incomingPacketNumber;
+	UDPpacketObject receivedPacket;
+	UDPpacketObject packetToSend;
+	const int UDP_CLIENT_THREAD_DELAY{ 1000 };
+
 public:
-	UDPsocketObject socket;
-	bool running{ true };
-	void loop(int port) {
-		UDPpacketObject receivedPacket(MAX_UDP_PACKET_SIZE);
-		UDPpacketObject packetToSend(100);
 
-		std::string msgToSend = "Hello my friend !";
-		std::memcpy(packetToSend.packet->data, msgToSend.c_str(), msgToSend.size());
-		packetToSend.packet->len = msgToSend.size();
+	UDPClient() : receivedPacket(MAX_UDP_PACKET_SIZE), packetToSend(100) {
+	}
+	~UDPClient() {
+		stop();
+	}
+	void start(std::string const& serverIp, Uint16 serverPort, Uint16 clientPort) {
+		if (running) return;
+		socket.open(clientPort);
+		myPort = clientPort;
+		IPaddressObject remoteAddress;
+		remoteAddress.resolveHost(serverIp, serverPort);
+		socket.bind(0, remoteAddress);
+		running = true;
+		error = false;
+		thread = std::thread(&UDPClient::loop, this);
+	}
 
+	void stop() {
+		if (!running) return;
+		running = false;//std::atomic is noexcept
+		thread.join();
+	}
 
-		socket.open(port);
+	/*
+	Uint16 id;
+	Uint8 version;
+	float x;
+	float y;
+	Uint8 type;
+	*/
+	void receiveNetEntitiesVec(UDPpacketObject& packet) {
+		const int netEntitySize = 2 + 1 + 4 + 4 + 1;
+		const int headerSize = 2 + 2;
+		if (!socket.recv(packet)) return;
 
-		//server
-		IPaddressObject ipServer;
-		ipServer.resolveHost("localhost", 8880);
-		socket.bind(0, ipServer);
+		assert(packet.packet->len > 4 && packet.packet->len <= MAX_UDP_PACKET_SIZE);
 
-		while (running) {
-			//if we received a new message
-			if (socket.recv(receivedPacket)) {
-				std::string msg(reinterpret_cast<char*>(receivedPacket.packet->data), receivedPacket.packet->len);
-				std::cout << "UDP client ("<< port <<") received: " << msg << std::endl;
+		//Verify checksum for integrity (against random errors)
+		if (!verifyChecksum(packet)) return;
+
+		//Update incoming packet number
+		Uint16 newIncomingPacketNumber = Packing::ReadUint16(packet.packet->data);
+		if (!isGreaterModulo(newIncomingPacketNumber, incomingPacketNumber)) return;
+		incomingPacketNumber = newIncomingPacketNumber;
+
+		if ((packet.packet->len - headerSize) % netEntitySize != 0 || packet.packet->len < headerSize + netEntitySize
+			|| packet.packet->len > MAX_UDP_PACKET_SIZE) return;
+		//const int packetVecLen = (packet.packet->len - headerSize) / netEntitySize;
+		int currByte = 2;
+		NetworkEntity currEntity{};
+		Uint16 id;
+		while (currByte < packet.packet->len - 2) {
+			id = Packing::ReadUint16(&packet.packet->data[currByte]);
+			currByte += 2;
+			currEntity.version = Packing::ReadUint8(&packet.packet->data[currByte]);
+			currByte += 1;
+			currEntity.x = Packing::ReadFloat(&packet.packet->data[currByte]);
+			currByte += 4;
+			currEntity.y = Packing::ReadFloat(&packet.packet->data[currByte]);
+			currByte += 4;
+			currEntity.version = Packing::ReadUint8(&packet.packet->data[currByte]);
+			currByte += 1;
+
+			//update entity vector
+			myLock.lock();
+			if (id >= netEntities.size())
+				netEntities.resize(id + 1);
+			netEntities[id] = currEntity;
+			myLock.unlock();
+
+			std::cout << "Recv entity ("<< id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
+				<< "; " << currEntity.x << "; " << currEntity.y << std::endl;
+		}
+	}
+	
+
+	void loop() {
+		try {
+			while (running) {
+				SDL_Delay(UDP_CLIENT_THREAD_DELAY);
+				receiveNetEntitiesVec(receivedPacket);
 			}
-			socket.send(0, packetToSend);
-			SDL_Delay(1000);
+		}
+		catch (std::exception const& e) {
+			std::cerr << e.what() << std::endl;
+			error = true;
+		}
+		
+		//wait until the main thread close this thread
+		while (running) {
+			SDL_Delay(THREAD_CLOSING_DELAY);
 		}
 	}
 };

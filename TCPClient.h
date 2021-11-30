@@ -23,13 +23,13 @@ public:
 		stop();
 	}
 
-	void start(std::string const& myName, std::string const& hostname = "127.0.0.1", Uint16 port = 9999) {
+	void start(std::string const& myName, std::string const& hostname, Uint16 port, Uint16 udpPort) {
 		if (clientRunning) return;
 
 		playerName = myName;
 		openConnectionToServer(hostname, port);
 		clientRunning = true;
-		thread = std::thread(&TCPClient::loop, this);
+		thread = std::thread(&TCPClient::loop, this, udpPort);
 	}
 
 	void stop() {
@@ -70,7 +70,7 @@ protected:
 	void closeConnection() {
 		if (isConnected)
 		{
-			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::DISCONNECTION_REQUEST, "");
+			sendDisconnectRequest();
 			isConnected = false;
 		}
 		try_releaseRecvBuffer(connectionToServer);
@@ -87,61 +87,43 @@ protected:
 	}
 	
 
-	/*void sendDisconnectRequest() {
-		assert(bufferSize >= 4);
-		SDLNet_Write16((Uint16)4, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::DISCONNECTION_REQUEST, buffer.get() + 2);
-		SDLNet_TCP_Send(connectionToServer.tcpSocket, buffer.get(), 4);
+	void sendDisconnectRequest() {
+		assert(sendingBuffer.Size() >= 4);
+		SDLNet_Write16((Uint16)4, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::DISCONNECTION_REQUEST, sendingBuffer.get() + 2);
+		sendPacket(connectionToServer, 4);
 	}
-	void sendConnectionRequest() {
-		Uint16 size = playerName.size() + 4;
-		assert(size < 65536 && size <= MAX_TCP_PACKET_SIZE);
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+
+	void sendConnectionRequest(Uint16 udpPort) {
+
+		Uint16 size = playerName.size() + 6;
+		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::CONNECTION_REQUEST, buffer.get() + 2);
-		std::memcpy(buffer.get() + 4, playerName.c_str(), playerName.size());
-		SDLNet_TCP_Send(connectionToServer.tcpSocket, buffer.get(), size);
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::CONNECTION_REQUEST, sendingBuffer.get() + 2);
+		Packing::Write(udpPort, &sendingBuffer.get()[4]);
+		std::memcpy(sendingBuffer.get() + 6, playerName.c_str(), playerName.size());
+		sendPacket(connectionToServer, size);
 	}
+
 	void sendChatMessage(std::string const& message) {
 		Uint16 size = message.size() + 4;
-		assert(size < 65536 && size <= MAX_TCP_PACKET_SIZE);
-		if (bufferSize < size) {
-			bufferSize = size;
-			buffer.lossfulRealloc(size);
+		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
+		if (sendingBuffer.Size() < size) {
+			sendingBuffer.lossfulRealloc(size);
 		}
-		SDLNet_Write16((Uint16)size, buffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::SEND_CHAT_MESSAGE, buffer.get() + 2);
-		std::memcpy(buffer.get() + 4, message.c_str(), message.size());
-		SDLNet_TCP_Send(connectionToServer.tcpSocket, buffer.get(), size);
-	}*/
-
-	void sendTCPmsg(TCPsocketObject const& tcpSock, TcpMsgType type, std::string str) {
-
-		if (type == TcpMsgType::DISCONNECTION_REQUEST) {
-			assert(sendingBuffer.Size() >= 4);
-			SDLNet_Write16((Uint16)4, sendingBuffer.get());
-			SDLNet_Write16((Uint16)type, sendingBuffer.get() + 2);
-			sendPacket(connectionToServer, 4);
-		}
-		else {
-			Uint16 size = str.size() + 4;
-			assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-			if (sendingBuffer.Size() < size) {
-				sendingBuffer.lossfulRealloc(size);
-			}
-			SDLNet_Write16((Uint16)size, sendingBuffer.get());
-			SDLNet_Write16((Uint16)type, sendingBuffer.get() + 2);
-			std::memcpy(sendingBuffer.get() + 4, str.c_str(), str.size());
-			sendPacket(connectionToServer, size);
-		}
+		SDLNet_Write16((Uint16)size, sendingBuffer.get());
+		SDLNet_Write16((Uint16)TcpMsgType::SEND_CHAT_MESSAGE, sendingBuffer.get() + 2);
+		std::memcpy(sendingBuffer.get() + 4, message.c_str(), message.size());
+		sendPacket(connectionToServer, size);
 	}
 
-	void loop() {
+	
+	void loop(Uint16 udpPort) {
 		try {
-			sendTCPmsg(connectionToServer.tcpSocket, TcpMsgType::CONNECTION_REQUEST, playerName);
+			sendConnectionRequest(udpPort);
 			isConnected = true;
 
 			TCPmessage msgToSend{};
@@ -154,7 +136,7 @@ protected:
 
 				//TODO: here if we sleep (block thread) for 1 sec it crashes ... why ?
 				if (messagesToSend.try_dequeue(msgToSend)) {
-					sendTCPmsg(connectionToServer.tcpSocket, msgToSend.type, msgToSend.message);
+					sendChatMessage(msgToSend.message);
 				}
 
 				keepConnectionAlive(connectionToServer);

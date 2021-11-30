@@ -15,6 +15,7 @@
 #include "Containers.h"
 #include "UDPServer.h"
 #include "UDPClient.h"
+#include "struct/struct.h"
 
 /*
 struct Velocity {
@@ -129,8 +130,43 @@ void testCircularQueue() {
     q.enqueue(7);
 }
 
+void testPacking() {
+    char buf[BUFSIZ] = { 0, };
+    int val = 0x12345678;
+    int oval;
+    
+    struct_pack(buf, "i", val);
+    struct_unpack(buf, "i", &oval);
+    std::cout << val << " => " << oval << "\n";
+}
+void testSparseVector() {
+    SparsedIndicesVector v(7);
+    assert(v.Size() == 0);
+    assert(v.Add() == 0);
+    assert(v.Add() == 1);
+    assert(v.Add() == 2);
+    assert(v.Add() == 3);
+    assert(v.Add() == 4 && v.Size() == 5);
+    v.Remove(0);
+    v.Remove(2);
+    for (int i = 0; i < v.Size(); i++) {
+        std::cout << v[i] << ", ";
+    }
+    v;
+    assert(v.Size() == 3);
+    assert(v.Add() == 0);
+    assert(v.Add() == 2);
+    assert(v.Add() == 5 && v.Size() == 6);
+    for (int i = 0; i < v.Size(); i++) {
+        std::cout << v[i] << ", ";
+    }
+}
+
 int main(int argc, char* args[])
 {
+    //testPacking();
+   // testSparseVector();
+  //  return 0;
 
     SDL_Init(SDL_INIT_VIDEO);
     if (SDLNet_Init() == -1) {
@@ -144,10 +180,11 @@ int main(int argc, char* args[])
     int choice = 1;
     std::string ip;
     Uint16 port;
+    Uint16 udpPort;
     std::cout << "TESTING TCP NEWORK\n===============================\n\n1. Server\n2. Client" << std::endl;
     std::cin >> choice;
-    //UDP:
-    if (choice == 1) {
+
+   /* if (choice == 1) {
         UDPServer serv;
         serv.loop();
     }
@@ -155,23 +192,30 @@ int main(int argc, char* args[])
         UDPClient client;
         client.loop(8881);
     }
+    return 4;
 
-
-    //TCP:
-    /*std::cout << "IP adress: ";
+    std::cout << "IP adress: ";
     std::cin >> ip;
     std::cout << "Port number: ";
-    std::cin >> port;*/
+    std::cin >> port;
+    */
+    if (choice == 2) {
+        std::cout << "UDP client port: ";
+        std::cin >> udpPort;
+    }
+    else
+        udpPort = 8880;
 
-    /*ip = "localhost";
+
+    ip = "localhost";
     port = 7777;
     
     registerAllComponents();
-    Game game(choice == 1, ip, port);
-    game.gameLoop();*/
+    Game game(choice == 1, ip, port, udpPort);
+    game.gameLoop();
  
 
-   /* testCollisions();
+    /*testCollisions();
     testGeometry();
     testECS();*/
 
