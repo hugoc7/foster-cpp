@@ -3,15 +3,29 @@
 #include "UDPNetwork.h"
 #include <mutex>
 
-//just echo server for now ...
+struct UdpClientModification {
+	std::string ip;
+	Uint16 port;
+	int playerID;
+	bool add;
+	UdpClientModification(int playerID, std::string const& ip, Uint16 port) : playerID{playerID}, ip { ip }, port{ port }, add{ true } {};
+	UdpClientModification(int playerID) : playerID{ playerID }, add{ false }{};
+	UdpClientModification() {};
+};
+
+//Max clients: 32 (SDL_NET_MAX_UDP_CHANNELS)
 class UDPServer : UDPNetworkNode {
 
 protected:
 	UDPpacketObject packetToSend{ MAX_UDP_PACKET_SIZE };
 	Uint16 outgoingPacketNumber[SDLNET_MAX_UDPCHANNELS];
 	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
+	int playerIDs[SDLNET_MAX_UDPCHANNELS];
 	SparsedIndicesVector channels;
 	const int UDP_SERVER_THREAD_DELAY{ 1000 };
+
+	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
+	const int CLIENTS_UPDATE_PERIOD{ 1000 };
 
 public:
 
@@ -80,20 +94,44 @@ public:
 		}
 	}
 
-	int addClient(std::string const& ip, Uint16 port) {
-		myLock.lock();
-		int channel = channels.Add();
-		IPaddressObject address;
-		address.resolveHost(ip, port);
-		socket.bind(channel, address);
-		myLock.unlock();
-		return channel;
+	void addClient(int playerID, std::string const& ip, Uint16 port) {
+		clientModififcationsQueue.emplace(playerID, ip, port);
 	}
-	void removeClient(int channel) {
-		myLock.lock();
-		socket.unbind(channel);
-		channels.Remove(channel);
-		myLock.unlock();
+	void removeClient(int playerID) {
+		clientModififcationsQueue.emplace(playerID);
+	}
+	//TODO: optimize this by using maybe try_lock ? or lock ?
+	void updateClients() {
+		int channel;
+		bool found;
+		UdpClientModification clientModification;
+		while (clientModififcationsQueue.try_dequeue(clientModification)) {
+			if (clientModification.add) {
+				//add client
+				channel = channels.Add();
+				assert(channel < SDLNET_MAX_UDPCHANNELS);
+				IPaddressObject address;
+				address.resolveHost(clientModification.ip, clientModification.port);
+				socket.bind(channel, address);
+				playerIDs[channel] = clientModification.playerID;
+			}
+			else {
+				//TODO: Player ID should be a number between 0 and MAX_PLAYERS in all the network code !!
+				//remove client
+				found = false;
+				for (channel = 0; channel < SDLNET_MAX_UDPCHANNELS; channel++) {
+					if (playerIDs[channel] == clientModification.playerID) {
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					throw std::runtime_error("Player ID not found");
+				}
+				socket.unbind(channel);
+				channels.Remove(channel);
+			}
+		}		
 	}
 
 	void loop() {
@@ -101,10 +139,17 @@ public:
 			NetworkEntity entity{ 0, 2.7, 4.2, 3 };
 			netEntities.emplace_back(entity);
 			UDPpacketObject receivedPacket(MAX_UDP_PACKET_SIZE);
+			Uint32 lastClientsUpdate{ SDL_GetTicks() }, now;
 
 			while (running) {
-		
+				
 				sendNetEntitiesVec(packetToSend);
+
+				if ((now = SDL_GetTicks()) - lastClientsUpdate >= CLIENTS_UPDATE_PERIOD) {
+					lastClientsUpdate = now;
+					updateClients();
+				}
+
 				SDL_Delay(UDP_SERVER_THREAD_DELAY);
 			}
 		}

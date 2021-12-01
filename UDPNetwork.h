@@ -19,11 +19,11 @@ protected:
 	//TODO: replace running (not correct !) by a 8-bit state variable with different states, LAUNCHING, RUNNING, QUITING ETC...
 	std::atomic<bool> running{ false };//only main thread can modify it
 	std::atomic<bool> error{ false };//only udp network thread can modify it 
-	std::mutex myMutex;
+	std::mutex entitiesMutex;
 	std::thread thread;
 	Uint16 myPort;
 public:
-	std::unique_lock<std::mutex> myLock;
+	std::unique_lock<std::mutex> entitiesLock;
 
 	//The sequence number of the last packet received, used to check if what we received is more recent
 	//Uint16 lastIncomingPacketNumber{ 0xFFFF };
@@ -32,7 +32,7 @@ public:
 
 	std::vector<NetworkEntity> netEntities;
 	
-	UDPNetworkNode() : myLock(myMutex, std::defer_lock) {};
+	UDPNetworkNode() : entitiesLock(entitiesMutex, std::defer_lock) {};
 
 
 

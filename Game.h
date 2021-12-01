@@ -95,7 +95,6 @@ public:
 		//Show chat messages in the console
 		bool found{ false };
 		bool activity{ false };
-		int channel;
 		if (isHost) {
 			//server.messages.lockQueue();
 			TCPmessage new_message;
@@ -118,17 +117,17 @@ public:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					std::cout << "New UDP client: " << new_message.clientIp << " : " << new_message.udpPort;
-					channel = udpServer.addClient(new_message.clientIp, new_message.udpPort);
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID, channel);
+					udpServer.addClient(new_message.playerID, new_message.clientIp, new_message.udpPort);
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
 					break;
 
 				case TcpMsgType::DISCONNECTION_REQUEST:
 					std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
+					udpServer.removeClient(new_message.playerID);
 					found = false;
 					for (int i = 0; i < playersInfos.size(); i++) {
 						if (found = (playersInfos[i].id == new_message.playerID)) {
-							udpServer.removeClient(playersInfos[i].udpChannel);
 							removeFromVector(playersInfos, i);
 							break;
 						}

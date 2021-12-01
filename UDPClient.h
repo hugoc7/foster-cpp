@@ -79,11 +79,11 @@ public:
 			currByte += 1;
 
 			//update entity vector
-			myLock.lock();
+			entitiesLock.lock();
 			if (id >= netEntities.size())
 				netEntities.resize(id + 1);
 			netEntities[id] = currEntity;
-			myLock.unlock();
+			entitiesLock.unlock();
 
 			std::cout << "Recv entity ("<< id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
 				<< "; " << currEntity.x << "; " << currEntity.y << std::endl;
