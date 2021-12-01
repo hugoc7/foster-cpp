@@ -10,7 +10,7 @@ void TCPServer::closeConnection(int clientID) {
 	try_releaseRecvBuffer(connections[clientID]);
 	connections[clientID].close(socketSet);//close the socket
 	removeFromVector(connections, clientID);
-	sendPlayerDisconnectionNotification(playerID);
+	sendPlayerDisconnectionNotification(playerID);//ici pb à gérer!!!
 }
 
 ///@brief receive TCP messages from all clients (non blocking)
@@ -66,7 +66,15 @@ void TCPServer::receiveMessagesFromClients() {
 		}
 		catch (std::runtime_error& e) {
 			std::cerr << e.what() << std::endl;
-			sendGoodbye(connections[clientID], std::string("Exception raised: ") + e.what());
+			//try to say goodbye ...
+			try {
+				sendGoodbye(connections[clientID], std::string("Exception raised: ") + e.what());
+			}
+			catch(...){}
+
+			//TODO: ici on a un probleme si une exception survient lors de l'envoi d'une notification
+			//à un autre client (dans closeConnection), il faudrait pouvoir fermer la connexion recursivement
+			//gros dossier ....
 			closeConnection(clientID);
 		}
 	}
@@ -148,8 +156,10 @@ void TCPServer::stop() {
 }
 
 
-void TCPServer::start(Uint16 port) {
+void TCPServer::start(Uint16 port, Uint16 udpPort) {
 	if (serverRunning) return;
+
+	udpServerPort = udpPort;
 
 	// create a listening TCP socket  (server)
 	IPaddressObject ip;

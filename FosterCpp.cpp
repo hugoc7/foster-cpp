@@ -192,19 +192,18 @@ int main(int argc, char* args[])
         UDPClient client;
         client.loop(8881);
     }
-    return 4;
+    return 4;*/
 
+
+    /*
     std::cout << "IP adress: ";
     std::cin >> ip;
     std::cout << "Port number: ";
-    std::cin >> port;
-    */
-    if (choice == 2) {
-        std::cout << "UDP client port: ";
-        std::cin >> udpPort;
-    }
-    else
-        udpPort = 8880;
+    std::cin >> port;*/
+    
+   std::cout << "UDP port: ";
+   std::cin >> udpPort;
+ 
 
 
     ip = "localhost";

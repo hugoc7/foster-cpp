@@ -122,8 +122,14 @@ struct TCPmessage {
 			break;
 		case TcpMsgType::PLAYER_LIST:
 			//PACKET SCHEMA (unit = byte)
-			//packetSize(2) + type(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
+			//packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
 			
+			//read udp server port
+			if (bufferSize < 6)
+				throw std::runtime_error("Error reading player list packet (udp server port)");
+			udpPort = SDLNet_Read16(buffer.get() + currentByteIndex);
+			currentByteIndex += 2;
+
 			while(currentByteIndex < bufferSize) {
 				if (currentByteIndex + 1 >= bufferSize)
 					throw std::runtime_error("Error reading player list packet (playerID)");

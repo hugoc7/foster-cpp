@@ -40,6 +40,8 @@ public:
 	std::thread thread{};
 	std::atomic<bool> serverRunning{ false };
 	TCPsocketObject listeningTcpSock;
+	Uint16 udpServerPort;
+
 
 	//SDLNet_SocketSet socketSet{ NULL };
 	//const int MAX_SOCKETS{16};
@@ -53,7 +55,7 @@ public:
 
 	void stop();
 
-	void start(Uint16 port = 9999);
+	void start(Uint16 port, Uint16 udpPort);
 
 	//tell a client that he will be disconnected
 	void sendGoodbye(ClientConnection& client, std::string const& reason) {
@@ -107,8 +109,10 @@ public:
 	
 		//PACKET SCHEMA (unit = byte)
 		//packetSize(2) + type(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
-		Uint16 size{ 4 };
-		unsigned int currentByteIndex{ 4 };
+		//TODO: packetSize(2) + type(2) + UDP_PORT(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
+
+		Uint16 size{ 6 };
+		unsigned int currentByteIndex{ 6 };
 		for (int i = 0; i < connections.size(); i++) {
 			size += 1 + 2 + connections[i].playerName.size();
 		}
@@ -118,6 +122,7 @@ public:
 		}
 		SDLNet_Write16((Uint16)size, sendingBuffer.get());
 		SDLNet_Write16((Uint16)TcpMsgType::PLAYER_LIST, sendingBuffer.get() + 2);
+		SDLNet_Write16(udpServerPort, sendingBuffer.get() + 4);
 		for (int i = 0; i < connections.size(); i++) {
 			SDLNet_Write16((Uint16)connections[i].playerID, sendingBuffer.get() + currentByteIndex);
 			currentByteIndex += 2;
@@ -131,6 +136,7 @@ public:
 	}
 
 	//send to all a new disconnection msg
+	//TODO: corriger le pb de gestion des exceptions lors de l'envoi de notifications aux autres clients
 	void sendPlayerDisconnectionNotification(Uint16 disconnectedPlayerID) {
 		const Uint16 size{ 6 };
 		if (sendingBuffer.Size() < size) {
