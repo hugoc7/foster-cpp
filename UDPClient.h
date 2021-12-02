@@ -4,14 +4,14 @@
 
 
 //just echo server for now ...
-class UDPClient : UDPNetworkNode {
+class UDPClient : public UDPNetworkNode {
 protected:
 	
 	Uint16 outgoingPacketNumber;
 	Uint16 incomingPacketNumber;
 	UDPpacketObject receivedPacket;
 	UDPpacketObject packetToSend;
-	const int UDP_CLIENT_THREAD_DELAY{ 1000 };
+	const int UDP_CLIENT_THREAD_DELAY{ 10 };
 
 public:
 
@@ -46,7 +46,7 @@ public:
 	Uint8 type;
 	*/
 	void receiveNetEntitiesVec(UDPpacketObject& packet) {
-		const int netEntitySize = 2 + 1 + 4 + 4 + 1;
+		const int netEntitySize = 1 + 4 + 4 + 4 + 4 + 1;
 		const int headerSize = 2 + 2;
 		if (!socket.recv(packet)) return;
 
@@ -65,15 +65,17 @@ public:
 		//const int packetVecLen = (packet.packet->len - headerSize) / netEntitySize;
 		int currByte = 2;
 		NetworkEntity currEntity{};
-		Uint16 id;
+		Uint16 id{0};
 		while (currByte < packet.packet->len - 2) {
-			id = Packing::ReadUint16(&packet.packet->data[currByte]);
-			currByte += 2;
 			currEntity.version = Packing::ReadUint8(&packet.packet->data[currByte]);
 			currByte += 1;
 			currEntity.x = Packing::ReadFloat(&packet.packet->data[currByte]);
 			currByte += 4;
 			currEntity.y = Packing::ReadFloat(&packet.packet->data[currByte]);
+			currByte += 4;
+			currEntity.vx = Packing::ReadFloat(&packet.packet->data[currByte]);
+			currByte += 4;
+			currEntity.vy = Packing::ReadFloat(&packet.packet->data[currByte]);
 			currByte += 4;
 			currEntity.version = Packing::ReadUint8(&packet.packet->data[currByte]);
 			currByte += 1;
@@ -85,9 +87,12 @@ public:
 			netEntities[id] = currEntity;
 			entitiesLock.unlock();
 
-			std::cout << "Recv entity ("<< id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
-				<< "; " << currEntity.x << "; " << currEntity.y << std::endl;
+
+			/*std::cout << "Recv entity ("<< id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
+				<< "; " << currEntity.vx << "; " << currEntity.vy << "\n";*/
+			id++;
 		}
+
 	}
 	
 

@@ -2,19 +2,19 @@
 
 namespace Packing {
 
-	void Write(Uint8 n, Uint8* buffer) {
+	void WriteUint8(Uint8 n, Uint8* buffer) {
 		assert(buffer != nullptr);
 		struct_pack(buffer, "B", n);
 	}
-	void Write(Uint16 n, Uint8* buffer) {
+	void WriteUint16(Uint16 n, Uint8* buffer) {
 		assert(buffer != nullptr);
 		SDLNet_Write16(n, buffer);
 	}
-	void Write(Uint32 n, Uint8* buffer) {
+	void WriteUint32(Uint32 n, Uint8* buffer) {
 		assert(buffer != nullptr);
 		SDLNet_Write32(n, buffer);
 	}
-	void Write(float f, Uint8* buffer) {
+	void WriteFloat(float f, Uint8* buffer) {
 		assert(buffer != nullptr);
 		struct_pack(buffer, "!f", f);
 	}

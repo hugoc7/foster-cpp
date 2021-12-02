@@ -14,7 +14,7 @@ struct UdpClientModification {
 };
 
 //Max clients: 32 (SDL_NET_MAX_UDP_CHANNELS)
-class UDPServer : UDPNetworkNode {
+class UDPServer : public UDPNetworkNode {
 
 protected:
 	UDPpacketObject packetToSend{ MAX_UDP_PACKET_SIZE };
@@ -22,7 +22,8 @@ protected:
 	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
 	int playerIDs[SDLNET_MAX_UDPCHANNELS];
 	SparsedIndicesVector channels;
-	const int UDP_SERVER_THREAD_DELAY{ 1000 };
+
+	const int UDP_SERVER_THREAD_DELAY{ 10 };
 
 	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
 	const int CLIENTS_UPDATE_PERIOD{ 1000 };
@@ -67,28 +68,31 @@ public:
 
 	//send net entities vector to all channels
 	void sendNetEntitiesVec(UDPpacketObject& packet ) {
-		if (channels.Size() == 0) return;
-
-		const int netEntitySize = 2 + 1 + 4 + 4 + 1;
-		const int headerSize = 2 + 2;
+		if (channels.Size() == 0 || netEntities.empty()) return;
+		entitiesLock.lock();
+		//const int netEntitySize = 1 + 4 + 4 + 4 + 4+ 1;
+		//const int headerSize = 2 + 2;
 		int currByte = 2;
 		for (Uint16 i = 0; i < netEntities.size(); i++) {
-			Packing::Write(i, &packet.packet->data[currByte]);
-			currByte += 2;
-			Packing::Write(netEntities[i].version, &packet.packet->data[currByte]);
+			Packing::WriteUint8(netEntities[i].version, &packet.packet->data[currByte]);
 			currByte += 1;
-			Packing::Write(netEntities[i].x, &packet.packet->data[currByte]);
+			Packing::WriteFloat(netEntities[i].x, &packet.packet->data[currByte]);
 			currByte += 4;
-			Packing::Write(netEntities[i].y, &packet.packet->data[currByte]);
+			Packing::WriteFloat(netEntities[i].y, &packet.packet->data[currByte]);
 			currByte += 4;
-			Packing::Write(netEntities[i].type, &packet.packet->data[currByte]);
+			Packing::WriteFloat(netEntities[i].vx, &packet.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteFloat(netEntities[i].vy, &packet.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteUint8(netEntities[i].type, &packet.packet->data[currByte]);
 			currByte += 1;
-			std::cout << "Send entity (" << i << ") : " << (int)netEntities[i].version << " " << (int)netEntities[i].type
-				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;
+			/*std::cout << "Send entity (" << i << ") : " << (int)netEntities[i].version << " " << (int)netEntities[i].type
+				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;*/
 		}
+		entitiesLock.unlock();
 		packet.packet->len = currByte + 2;
 		for (int channel = 0; channel < channels.Size(); channel++) {
-			Packing::Write(outgoingPacketNumber[channel]++, packet.packet->data);
+			Packing::WriteUint16(outgoingPacketNumber[channel]++, packet.packet->data);
 			calculateChecksum(packet);
 			socket.send(channel, packet);
 		}
@@ -136,8 +140,8 @@ public:
 
 	void loop() {
 		try {
-			NetworkEntity entity{ 0, 2.7, 4.2, 3 };
-			netEntities.emplace_back(entity);
+			//NetworkEntity entity{ 0, 2.7, 4.2, 3 };
+			//netEntities.emplace_back(entity);
 			UDPpacketObject receivedPacket(MAX_UDP_PACKET_SIZE);
 			Uint32 lastClientsUpdate{ SDL_GetTicks() }, now;
 
@@ -151,6 +155,7 @@ public:
 				}
 
 				SDL_Delay(UDP_SERVER_THREAD_DELAY);
+				//std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_THREAD_DELAY));
 			}
 		}
 		catch (std::exception const& e) {

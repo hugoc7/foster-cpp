@@ -16,6 +16,7 @@
 #include <algorithm>
 #include "UDPClient.h"
 #include "UDPServer.h"
+#include <mutex>
 
 class Game {
 private:
@@ -43,6 +44,9 @@ private:
 	Uint16 udpPort;
 	UDPClient udpClient;
 	UDPServer udpServer;
+	std::vector<EntityID> localEntityIds;
+
+
 
 	//GUI
 	ScoreBoard scoreBoard;
@@ -76,6 +80,58 @@ public:
 
 		
 	}
+	//WARNING: it modifies the ecs global variable
+	void updateNetEntitiesPos() {
+		//VERY MINIMAL VERSION OF THE ALGORITHM JUST TO SEE PLAYERS MOVE ON SCREEN !
+
+		//client side
+		if (!isHost) {
+			std::lock_guard<std::mutex>(udpClient.entitiesMutex);
+			std::vector<NetworkEntity> const& packet = udpClient.netEntities;
+
+			//1-1 correspondance between packet array and localEntitiesID array
+			for (int i = 0; i < packet.size(); i++) {
+				//create new entity
+				if (i >= localEntityIds.size()) {
+					EntityID id = ecs.addEntity();
+					ecs.addComponent<MovingObject>(id, packet[i].x, packet[i].y);
+					ecs.getComponent<MovingObject>(id).newSpeed = Vector2(packet[i].vx, packet[i].vy);
+					ecs.addComponent<BoxCollider>(id, 1, 2);
+					players.insert(id);
+					localEntityIds.push_back(id);
+				}
+				//update entity
+				else {
+					MovingObject& moveComp = ecs.getComponent<MovingObject>(localEntityIds[i]);
+					moveComp.position.x = packet[i].x;
+					moveComp.position.y = packet[i].y;
+					moveComp.newSpeed.x = packet[i].vx;
+					moveComp.newSpeed.y = packet[i].vy;
+					moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
+				}
+			}
+		}
+		//server side
+		else {
+			std::lock_guard<std::mutex>(udpServer.entitiesMutex);
+		
+			for (int i = 0; i < players.v.size(); i++) {
+				//create new entity
+				MovingObject& player = ecs.getComponent<MovingObject>(players.v[i]);
+				if (i >= udpServer.netEntities.size()) {
+					udpServer.netEntities.emplace_back(0, player.position.x, player.position.y,
+						player.newSpeed.x, player.newSpeed.y, 0);
+				}
+				//update entity
+				else {
+					udpServer.netEntities[i].x = player.position.x;
+					udpServer.netEntities[i].y = player.position.y;
+				}
+			}
+		}
+	}
+
+
 	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
 		std::ifstream file(filename);
 		float x, y, w, h;
@@ -231,6 +287,8 @@ public:
 
 			if (deltaTime >= refreshTimeInterval) {
 				handleNetwork(chatWindow);
+
+				updateNetEntitiesPos();
 
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);

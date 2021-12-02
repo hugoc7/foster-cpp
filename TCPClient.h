@@ -103,7 +103,7 @@ protected:
 		}
 		SDLNet_Write16((Uint16)size, sendingBuffer.get());
 		SDLNet_Write16((Uint16)TcpMsgType::CONNECTION_REQUEST, sendingBuffer.get() + 2);
-		Packing::Write(udpPort, &sendingBuffer.get()[4]);
+		Packing::WriteUint16(udpPort, &sendingBuffer.get()[4]);
 		std::memcpy(sendingBuffer.get() + 6, playerName.c_str(), playerName.size());
 		sendPacket(connectionToServer, size);
 	}

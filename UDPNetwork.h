@@ -10,7 +10,14 @@ struct NetworkEntity {
 	Uint8 version;
 	float x;
 	float y;
+	float vx;
+	float vy;
 	Uint8 type;
+	NetworkEntity(Uint8 version, float x, float y, float vx, float vy, Uint8 type) :
+		version{ version }, x{ x }, y{ y }, type{ type }, vx{ vx }, vy{ vy }
+	{
+	}
+	NetworkEntity() = default;
 };
 
 class UDPNetworkNode {
@@ -19,11 +26,11 @@ protected:
 	//TODO: replace running (not correct !) by a 8-bit state variable with different states, LAUNCHING, RUNNING, QUITING ETC...
 	std::atomic<bool> running{ false };//only main thread can modify it
 	std::atomic<bool> error{ false };//only udp network thread can modify it 
-	std::mutex entitiesMutex;
 	std::thread thread;
 	Uint16 myPort;
 public:
 	std::unique_lock<std::mutex> entitiesLock;
+	std::mutex entitiesMutex;
 
 	//The sequence number of the last packet received, used to check if what we received is more recent
 	//Uint16 lastIncomingPacketNumber{ 0xFFFF };
@@ -65,7 +72,7 @@ public:
 	void calculateChecksum(UDPpacketObject& packet) {
 		assert(packet.packet->len >= 3);
 		Uint16 checksum = CRC::Calculate(packet.packet->data, packet.packet->len-2, CRC::CRC_16_ARC());
-		Packing::Write(checksum, &packet.packet->data[packet.packet->len - 2]);
+		Packing::WriteUint16(checksum, &packet.packet->data[packet.packet->len - 2]);
 	}
 	//verify a 16 bit checksum on a UDP packet
 	bool verifyChecksum(UDPpacketObject& packet) {
@@ -75,6 +82,7 @@ public:
 	}
 
 };
+
 
 //should a method of the server classvz
 /*

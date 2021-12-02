@@ -209,9 +209,14 @@ int main(int argc, char* args[])
     ip = "localhost";
     port = 7777;
     
-    registerAllComponents();
-    Game game(choice == 1, ip, port, udpPort);
-    game.gameLoop();
+    //try {
+        registerAllComponents();
+        Game game(choice == 1, ip, port, udpPort);
+        game.gameLoop();
+   /* }
+    catch (std::exception const& e) {
+        std::cerr << "\nErreur dans Game: " << e.what() << std::endl;
+    }*/
  
 
     /*testCollisions();
