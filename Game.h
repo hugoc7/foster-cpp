@@ -32,6 +32,7 @@ private:
 	Renderer renderingManager{};
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 	EntityID player;
+	Vector2 spawnPos{4.5, 7};
 
 	//Network
 	std::vector<PlayerInfos> playersInfos;
@@ -45,6 +46,7 @@ private:
 	UDPClient udpClient;
 	UDPServer udpServer;
 	std::vector<EntityID> localEntityIds;
+	//std::vector<std::pair<int, Uint8>> clientInputs;//first = player ID ; second = keyboard input
 
 
 
@@ -64,10 +66,13 @@ public:
 		port{port},
 		udpPort{udpPort}
 	{
-		player = ecs.addEntity();
-		ecs.addComponent<MovingObject>(player, 4.5, 7);
-		ecs.addComponent<BoxCollider>(player, 1, 2);
-		players.insert(player);
+		if (isHost) {
+			player = ecs.addEntity();
+			ecs.addComponent<MovingObject>(player, 4.5, 7);
+			ecs.addComponent<BoxCollider>(player, 1, 2);
+			players.insert(player);
+		}
+
 		//players.emplace_back(4.5, 7);
 		//playersColliders.emplace_back(1, 2);
 
@@ -151,6 +156,7 @@ public:
 		//Show chat messages in the console
 		bool found{ false };
 		bool activity{ false };
+		EntityID newEntity;
 		if (isHost) {
 			//server.messages.lockQueue();
 			TCPmessage new_message;
@@ -174,7 +180,14 @@ public:
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					std::cout << "New UDP client: " << new_message.clientIp << " : " << new_message.udpPort;
 					udpServer.addClient(new_message.playerID, new_message.clientIp, new_message.udpPort);
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+
+					//create new entity for the player
+					newEntity = ecs.addEntity();
+					ecs.addComponent<MovingObject>(newEntity, spawnPos.x, spawnPos.y);
+					ecs.addComponent<BoxCollider>(newEntity, 1, 2);
+					players.insert(newEntity);
+
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID, newEntity);
 					break;
 
 				case TcpMsgType::DISCONNECTION_REQUEST:
@@ -184,6 +197,8 @@ public:
 					found = false;
 					for (int i = 0; i < playersInfos.size(); i++) {
 						if (found = (playersInfos[i].id == new_message.playerID)) {
+							//remove player's entity
+							ecs.removeEntity(playersInfos[i].entity);
 							removeFromVector(playersInfos, i);
 							break;
 						}
@@ -218,7 +233,9 @@ public:
 				case TcpMsgType::NEW_CONNECTION:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID);
+					//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
+					//===============================
+					playersInfos.emplace_back(new_message.playerName, new_message.playerID, /*TODO: put entity ID here*/0);
 					break;
 
 				case TcpMsgType::NEW_CHAT_MESSAGE:
@@ -256,7 +273,10 @@ public:
 					assert(new_message.playerIDs.size() == new_message.playerNames.size());
 					for (int i = 0; i < new_message.playerIDs.size(); i++) {
 						std::cout << new_message.playerIDs[i] << " : " << new_message.playerNames[i] << std::endl;
-						playersInfos.emplace_back(new_message.playerNames[i], new_message.playerIDs[i]);
+
+						//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
+						//===============================
+						playersInfos.emplace_back(new_message.playerNames[i], new_message.playerIDs[i], /*todo: put entityID*/0);
 					}
 					std::cout << "=================" << std::endl;
 					break;
@@ -298,7 +318,9 @@ public:
 				detectStaticSliding(players, plateforms);
 				detectStaticCollisions(players, plateforms);
 
-				applyMovement(players, deltaTime);//also apply gravity
+				if (isHost) {
+					applyMovement(players, deltaTime);//also apply gravity
+				}
 
 
 				renderingManager.render(players, plateforms);
@@ -330,7 +352,7 @@ public:
 	void handleInputs(bool &quit, Renderer& renderer, EntityID playerID, ScoreBoard& scoreBoard, ChatWindow& chatWin) {
 		SDL_Event e;
 		SDL_PollEvent(&e);
-		MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
+		
 		//TODO: faire en sorte d'analyser tous les events de la file d'attente et pas juste le premier
 		
 		const Uint8* state = SDL_GetKeyboardState(NULL);
@@ -339,28 +361,84 @@ public:
 		}
 		scoreBoard.handleEvents(e);
 
-		if (state[SDL_SCANCODE_RIGHT]) {
-			player.newSpeed.x = playerMaxSpeed.x;
-		}
-		else if (state[SDL_SCANCODE_LEFT]) {
-			player.newSpeed.x = -1.0f * playerMaxSpeed.x;
-		}
-		else {
-			player.newSpeed.x = 0;
-		}
-		switch (e.type) {
+		//HOST
+		if (isHost) {
+			MovingObject& player{ ecs.getComponent<MovingObject>(playerID) };
+
+			if (state[SDL_SCANCODE_RIGHT]) {
+				player.newSpeed.x = playerMaxSpeed.x;
+			}
+			else if (state[SDL_SCANCODE_LEFT]) {
+				player.newSpeed.x = -1.0f * playerMaxSpeed.x;
+			}
+			else {
+				player.newSpeed.x = 0;
+			}
+			switch (e.type) {
 			case SDL_QUIT:
-			quit = true;
-			break;
+				quit = true;
+				break;
 			case SDL_WINDOWEVENT:
 				renderer.getNewWindowSize();
 				scoreBoard.reloadFont();
 				chatWin.reloadFont();
 				break;
 			case SDL_KEYDOWN:
-				if (e.key.keysym.sym == SDLK_UP)
-					player.newSpeed.y = playerMaxSpeed.y;
+					if (e.key.keysym.sym == SDLK_UP)
+						player.newSpeed.y = playerMaxSpeed.y;
 				break;
+			}
+
+			//Handle network inputs
+			//======================
+			std::vector<Uint8> oldNetInputs;
+			for (int i = 0; i < playersInfos.size(); i++) {
+				oldNetInputs.push_back(playersInfos[i].controls);
+			}
+			udpServer.getClientInputs(playersInfos);
+			for (int i = 0; i < playersInfos.size(); i++) {
+				MovingObject& currPlayer{ ecs.getComponent<MovingObject>(playersInfos[i].entity) };
+				//right
+				if (playersInfos[i].controls & 1) {
+					currPlayer.newSpeed.x = playerMaxSpeed.x;
+				}
+				//left
+				else if (playersInfos[i].controls & 2) {
+					currPlayer.newSpeed.x = -1.0f * playerMaxSpeed.x;
+				}
+				else {
+					currPlayer.newSpeed.x = 0;
+				}
+				//up
+				if (!(oldNetInputs[i] & 4) && (playersInfos[i].controls & 4)) {
+					currPlayer.newSpeed.y = playerMaxSpeed.y;
+				}
+			}
+		}
+		//CLIENT
+		else {
+			Uint8 netInputState = 0;
+			if (state[SDL_SCANCODE_RIGHT]) {
+				netInputState |= 1;
+ 			}
+			if (state[SDL_SCANCODE_LEFT]) {
+				netInputState |= 2;
+			}
+			if (state[SDL_SCANCODE_UP]) {
+				netInputState |= 4;
+			}
+			udpClient.userInputs = netInputState;
+
+			switch (e.type) {
+			case SDL_QUIT:
+				quit = true;
+				break;
+			case SDL_WINDOWEVENT:
+				renderer.getNewWindowSize();
+				scoreBoard.reloadFont();
+				chatWin.reloadFont();
+				break;
+			}
 		}
 	}
 };

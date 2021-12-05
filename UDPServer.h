@@ -2,6 +2,8 @@
 #include "SDLNetCpp.h"
 #include "UDPNetwork.h"
 #include <mutex>
+#include "PlayerInfos.h"
+#include <chrono>
 
 struct UdpClientModification {
 	std::string ip;
@@ -22,15 +24,24 @@ protected:
 	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
 	int playerIDs[SDLNET_MAX_UDPCHANNELS];
 	SparsedIndicesVector channels;
+	std::chrono::time_point<std::chrono::steady_clock> lastTimeEntitiesSent;
 
+	const int sendEntitiesPeriod{ 60 };
 	const int UDP_SERVER_THREAD_DELAY{ 10 };
 
 	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
 	const int CLIENTS_UPDATE_PERIOD{ 1000 };
+	Uint8 clientInputs[SDLNET_MAX_UDPCHANNELS];
+	std::mutex clientInputsMutex;
 
 public:
 
 	UDPServer() : channels(SDLNET_MAX_UDPCHANNELS) {
+		for (int i = 0; i < SDLNET_MAX_UDPCHANNELS; i++) {
+			outgoingPacketNumber[i] = 0;
+			incomingPacketNumber[i] = 0xFFFF;
+			clientInputs[i] = 0;
+		}
 	}
 	~UDPServer() {
 		stop();
@@ -49,21 +60,54 @@ public:
 		thread.join();
 	}
 
+	//TODO: refactor this SHIT ! but first we need to refactor Net Player IDs and channels system cause it's very bad ...
+	/// @param indexedClientInputs vector of pairs with player ID (first) and clientInputs (second)  
+	void getClientInputs(std::vector<PlayerInfos>& playerInfos)  {
+		std::lock_guard<std::mutex> lock(clientInputsMutex);
 
-	//TODO:
-	void receiveClientInputs() {
-		/*if (!socket.recv(packet)) return false;
+		//assert(playerInfos.size() == channels.Size());
+
+		//TODO: plz find something better xD
+		for (int i = 0; i < channels.Size(); i++) {
+			for (int j = 0; j < playerInfos.size(); j++) {
+				if (playerInfos[j].id == playerIDs[channels[i]]) {
+					playerInfos[j].controls = clientInputs[channels[i]];
+				}
+			}
+		}
+	}
+
+	void receiveClientInputs(UDPpacketObject& packet) {
+		if (!socket.recv(packet)) return;
 
 		assert(packet.packet->len > 4 && packet.packet->len <= MAX_UDP_PACKET_SIZE);
 
 		//Verify checksum for integrity (against random errors)
-		if (!verifyChecksum(packet)) return false;
+		if (!verifyChecksum(packet)) {
+			std::cout << "bad checksum\n";
+			return;
+		}
 
-		Uint16 incomingPacketNumber = Packing::ReadUint16(packet.packet->data);
-		if (!isGreaterModulo(incomingPacketNumber, lastIncomingPacketNumber)) return false;
+		Uint16 newPacketNumber = Packing::ReadUint16(packet.packet->data);
+		if (!isGreaterModulo(newPacketNumber, incomingPacketNumber[packet.packet->channel]))
+		{
+			std::cout << "bad packet number\n";
+			return;
+		}
 
-		lastIncomingPacketNumber = incomingPacketNumber;
-		return true;*/
+		incomingPacketNumber[packet.packet->channel] = newPacketNumber;
+
+		if (packet.packet->len != 5) {
+			std::cout << "bad packet len\n";
+			return; //TODO: throw an error
+		}
+
+		Uint8 recvControls = Packing::ReadUint8(&packet.packet->data[2]);
+		//if (recvControls != 0) {
+			std::cout << packet.packet->channel << " RECV INPUT: "<< (int)packet.packet->data[2] << "\n";
+		//}
+		std::lock_guard<std::mutex> lock(clientInputsMutex);
+		clientInputs[packet.packet->channel] = recvControls;
 	}
 
 	//send net entities vector to all channels
@@ -89,13 +133,13 @@ public:
 			/*std::cout << "Send entity (" << i << ") : " << (int)netEntities[i].version << " " << (int)netEntities[i].type
 				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;*/
 		}
-		entitiesLock.unlock();
 		packet.packet->len = currByte + 2;
 		for (int channel = 0; channel < channels.Size(); channel++) {
-			Packing::WriteUint16(outgoingPacketNumber[channel]++, packet.packet->data);
+			Packing::WriteUint16(outgoingPacketNumber[channels[channel]]++, packet.packet->data);
 			calculateChecksum(packet);
 			socket.send(channel, packet);
 		}
+		entitiesLock.unlock();
 	}
 
 	void addClient(int playerID, std::string const& ip, Uint16 port) {
@@ -118,6 +162,9 @@ public:
 				address.resolveHost(clientModification.ip, clientModification.port);
 				socket.bind(channel, address);
 				playerIDs[channel] = clientModification.playerID;
+				outgoingPacketNumber[channel] = 0;
+				incomingPacketNumber[channel] = 0xFFFF;
+				clientInputs[channel] = 0;
 			}
 			else {
 				//TODO: Player ID should be a number between 0 and MAX_PLAYERS in all the network code !!
@@ -139,6 +186,8 @@ public:
 	}
 
 	void loop() {
+		std::chrono::milliseconds ms;
+		lastTimeEntitiesSent = std::chrono::steady_clock::now();
 		try {
 			//NetworkEntity entity{ 0, 2.7, 4.2, 3 };
 			//netEntities.emplace_back(entity);
@@ -146,16 +195,21 @@ public:
 			Uint32 lastClientsUpdate{ SDL_GetTicks() }, now;
 
 			while (running) {
-				
-				sendNetEntitiesVec(packetToSend);
-
-				if ((now = SDL_GetTicks()) - lastClientsUpdate >= CLIENTS_UPDATE_PERIOD) {
-					lastClientsUpdate = now;
-					updateClients();
+				auto now = std::chrono::steady_clock::now();
+				if (now - lastTimeEntitiesSent >= sendEntitiesPeriod * ms) {
+					lastTimeEntitiesSent = now;
+					sendNetEntitiesVec(packetToSend);
 				}
 
-				SDL_Delay(UDP_SERVER_THREAD_DELAY);
-				//std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_THREAD_DELAY));
+				//if ((now = SDL_GetTicks()) - lastClientsUpdate >= CLIENTS_UPDATE_PERIOD) {
+					//lastClientsUpdate = now;
+					updateClients();
+				//}
+
+				receiveClientInputs(receivedPacket);
+
+				//SDL_Delay(UDP_SERVER_THREAD_DELAY);
+				std::this_thread::sleep_for(std::chrono::milliseconds(UDP_SERVER_THREAD_DELAY));
 			}
 		}
 		catch (std::exception const& e) {

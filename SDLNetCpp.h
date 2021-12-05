@@ -281,9 +281,11 @@ public:
 		if(SDLNet_UDP_Send(socket, channel, packet.packet) != 1)
 			throw std::runtime_error(std::string("SDLNet_UDP_Send ") + SDLNet_GetError());
 	}
+	//INFO: Recv throws when it receives a packet from an unbound address
 	bool recv(UDPpacketObject& packet) {
 		assert(socket != NULL);
 		int ret;
+		 
 		if ((ret = SDLNet_UDP_Recv(socket, packet.packet)) == -1) {
 			throw std::runtime_error(std::string("SDLNet_UDP_Recv ") + SDLNet_GetError());
 		}
