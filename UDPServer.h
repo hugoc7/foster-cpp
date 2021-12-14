@@ -22,21 +22,20 @@ protected:
 	UDPpacketObject packetToSend{ MAX_UDP_PACKET_SIZE };
 	Uint16 outgoingPacketNumber[SDLNET_MAX_UDPCHANNELS];
 	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
-	int playerIDs[SDLNET_MAX_UDPCHANNELS];
-	SparsedIndicesVector channels;
 	std::chrono::time_point<std::chrono::steady_clock> lastTimeEntitiesSent;
 
-	const int sendEntitiesPeriod{ 60 };
-	const int UDP_SERVER_THREAD_DELAY{ 10 };
+	const int sendEntitiesPeriod{ 30 };
+	const int UDP_SERVER_THREAD_DELAY{ 5 };
 
 	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
 	const int CLIENTS_UPDATE_PERIOD{ 1000 };
 	Uint8 clientInputs[SDLNET_MAX_UDPCHANNELS];
 	std::mutex clientInputsMutex;
+	std::vector<int> channels;
 
 public:
 
-	UDPServer() : channels(SDLNET_MAX_UDPCHANNELS) {
+	UDPServer()  {
 		for (int i = 0; i < SDLNET_MAX_UDPCHANNELS; i++) {
 			outgoingPacketNumber[i] = 0;
 			incomingPacketNumber[i] = 0xFFFF;
@@ -51,6 +50,7 @@ public:
 		socket.open(port);
 		running = true;
 		error = false;
+		channels.clear();
 		thread = std::thread(&UDPServer::loop, this);
 	}
 	
@@ -59,21 +59,13 @@ public:
 		running = false;//std::atomic is noexcept
 		thread.join();
 	}
-
-	//TODO: refactor this SHIT ! but first we need to refactor Net Player IDs and channels system cause it's very bad ...
-	/// @param indexedClientInputs vector of pairs with player ID (first) and clientInputs (second)  
-	void getClientInputs(std::vector<PlayerInfos>& playerInfos)  {
+ 
+	void getClientInputs(ArrayMap<PlayerInfos>& playerInfos)  {
 		std::lock_guard<std::mutex> lock(clientInputsMutex);
 
 		//assert(playerInfos.size() == channels.Size());
-
-		//TODO: plz find something better xD
-		for (int i = 0; i < channels.Size(); i++) {
-			for (int j = 0; j < playerInfos.size(); j++) {
-				if (playerInfos[j].id == playerIDs[channels[i]]) {
-					playerInfos[j].controls = clientInputs[channels[i]];
-				}
-			}
+		for (int i = 0; i < channels.size(); i++) {
+			playerInfos.Get(channels[i]).controls = clientInputs[channels[i]];
 		}
 	}
 
@@ -112,7 +104,7 @@ public:
 
 	//send net entities vector to all channels
 	void sendNetEntitiesVec(UDPpacketObject& packet ) {
-		if (channels.Size() == 0 || netEntities.empty()) return;
+		if (channels.empty() || netEntities.empty()) return;
 		entitiesLock.lock();
 		//const int netEntitySize = 1 + 4 + 4 + 4 + 4+ 1;
 		//const int headerSize = 2 + 2;
@@ -134,10 +126,10 @@ public:
 				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;*/
 		}
 		packet.packet->len = currByte + 2;
-		for (int channel = 0; channel < channels.Size(); channel++) {
-			Packing::WriteUint16(outgoingPacketNumber[channels[channel]]++, packet.packet->data);
+		for (int i = 0; i < channels.size(); i++) {
+			Packing::WriteUint16(outgoingPacketNumber[channels[i]]++, packet.packet->data);
 			calculateChecksum(packet);
-			socket.send(channel, packet);
+			socket.send(channels[i], packet);
 		}
 		entitiesLock.unlock();
 	}
@@ -150,37 +142,29 @@ public:
 	}
 	//TODO: optimize this by using maybe try_lock ? or lock ?
 	void updateClients() {
-		int channel;
-		bool found;
 		UdpClientModification clientModification;
 		while (clientModififcationsQueue.try_dequeue(clientModification)) {
+
+			int channel{ clientModification.playerID }; // udp schannel = player ID !
+			assert(channel >= 0 && channel < SDLNET_MAX_UDPCHANNELS);//TODO: should we throw an exception ?
+
 			if (clientModification.add) {
-				//add client
-				channel = channels.Add();
-				assert(channel < SDLNET_MAX_UDPCHANNELS);
 				IPaddressObject address;
 				address.resolveHost(clientModification.ip, clientModification.port);
 				socket.bind(channel, address);
-				playerIDs[channel] = clientModification.playerID;
 				outgoingPacketNumber[channel] = 0;
 				incomingPacketNumber[channel] = 0xFFFF;
 				clientInputs[channel] = 0;
+				channels.push_back(channel);
 			}
 			else {
-				//TODO: Player ID should be a number between 0 and MAX_PLAYERS in all the network code !!
 				//remove client
-				found = false;
-				for (channel = 0; channel < SDLNET_MAX_UDPCHANNELS; channel++) {
-					if (playerIDs[channel] == clientModification.playerID) {
-						found = true;
-						break;
+				socket.unbind(channel);
+				for (int i = 0; i < channels.size(); i++) {
+					if (channel == channels[i]) {
+						removeFromVector(channels, i);
 					}
 				}
-				if (!found) {
-					throw std::runtime_error("Player ID not found");
-				}
-				socket.unbind(channel);
-				channels.Remove(channel);
 			}
 		}		
 	}

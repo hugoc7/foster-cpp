@@ -41,7 +41,7 @@ public:
 		visible = state[SDL_SCANCODE_TAB];
 	}
 
-	void render(std::vector<PlayerInfos> const& playerInfos, std::string const& myName) {
+	void render(ArrayMap<PlayerInfos> const& playerInfos, std::string const& myName) {
 
 		if (!visible) return;
 
@@ -57,7 +57,7 @@ public:
 		scoreText += "    - SCORE BOARD (";
 		scoreText += myName;
 		scoreText += ") -\n\n";
-		for (int i = 0; i < playerInfos.size(); i++) {
+		for (int i = 0; i < playerInfos.Size(); i++) {
 			scoreText += std::to_string(playerInfos[i].id) + " : ";
 			scoreText += playerInfos[i].name;
 			scoreText += "\n";

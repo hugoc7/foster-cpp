@@ -5,7 +5,8 @@ void TCPServer::closeConnection(int clientID) {
 	if (connections[clientID].connectedToGame) {
 		messages.emplace(TcpMsgType::DISCONNECTION_REQUEST,
 			std::move(connections[clientID].playerName), connections[clientID].playerID);
-		connections[clientID].connectedToGame = false;
+		connections[clientID].connectedToGame = false;//useless ?
+		releasePlayerID(connections[clientID].playerID);
 	}
 	try_releaseRecvBuffer(connections[clientID]);
 	connections[clientID].close(socketSet);//close the socket
@@ -36,14 +37,23 @@ void TCPServer::receiveMessagesFromClients() {
 					assert(connections[clientID].playerID >= 0);
 					newMessage.playerID = connections[clientID].playerID;
 					connections[clientID].connectedToGame = false;
+					releasePlayerID(connections[clientID].playerID);
 					closeConnection(clientID);
 					messages.enqueue(std::move(newMessage));
 					break;
 
 				case TcpMsgType::CONNECTION_REQUEST:
+
+					/*if (connectedClients++ > MAX_CLIENTS) {
+						sendGoodbye(connections[clientID], "This server is full (too much players).");
+						closeConnection(clientID);//TODO: pb here
+						continue;
+					}*/
+					
 					connections[clientID].playerName = newMessage.playerName;
 					connections[clientID].connectedToGame = true;
-					connections[clientID].playerID = generatePlayerID();
+					connections[clientID].playerID = getNewPlayerID();
+
 					newMessage.playerID = connections[clientID].playerID;
 					newMessage.clientIp = std::move(connections[clientID].tcpSocket.getPeerIP());
 					sendPlayerList(connections[clientID]);
@@ -86,6 +96,7 @@ void TCPServer::acceptNewConnection() {
 	TCPsocketObject new_tcpsock;
 
 	if (!listeningTcpSock.isReady()) return;//strange, it works but cheksockets have not been called yet
+
 
 	if (listeningTcpSock.accept(new_tcpsock)) {
 
@@ -175,6 +186,10 @@ void TCPServer::start(Uint16 port, Uint16 udpPort) {
 
 TCPServer::TCPServer() : TCPNetworkNode(), messages(MAX_MESSAGES) {
 	//start();
+	availablePlayerIDs.reserve(MAX_CLIENTS);
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		availablePlayerIDs.push_back(MAX_CLIENTS - 1 - i);
+	}
 }
 TCPServer::~TCPServer() {
 	stop();

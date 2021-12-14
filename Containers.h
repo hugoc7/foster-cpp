@@ -347,3 +347,75 @@ public:
 		size--;
 	}
 };
+
+//K = key type, should be a number
+//V = value type, can be anything
+//description: a map (dictionnary) implemented with an array. The keys are positive integers between 0 and a maximum value. (they are indices of a vector)
+template <typename V, typename K = Uint16> 
+class ArrayMap {
+protected:
+	std::vector<int> index;
+	std::vector<V> values;
+public:
+	static const int EMPTY = -1;
+	static const int MAX_KEYS = 1000;
+
+	inline bool IsValidKey(K key) const noexcept {
+		return 0 <= key && key <= MAX_KEYS;
+	}
+
+	template<typename ... Args>
+	//key must be valid and should not already exist in the map
+	void Add(K key, Args&& ... args) {
+		assert(0 <= key && key <= MAX_KEYS);//invalid key
+		values.emplace_back(std::forward<Args>(args)...);
+		if (index.size() <= key)
+			index.resize(key+1, ArrayMap::EMPTY);
+
+		index[key] = values.size() - 1;
+	}
+	//key must be valid
+	template<typename ... Args>
+	void AddOrReplace(K key, Args&& ... args) {
+		assert(0 <= key && key <= MAX_KEYS);//invalid key
+		if (key < index.size() && index[key] >= 0 && index[key] < values.size()) {
+			//replace
+			V newValue(std::forward<Args>(args)...);
+			values[index[key]] = std::move(newValue);
+			return;
+		}
+
+		//add
+		values.emplace_back(std::forward<Args>(args)...);
+		if (index.size() <= key)
+			index.resize(key + 1, ArrayMap::EMPTY);
+
+		index[key] = values.size() - 1;
+	}
+	inline size_t Size() const {
+		return values.size();
+	}
+	V const& operator[](int index) const {
+		return values[index];
+	}
+	//returns false if the key is invalid or not contained in the map
+	bool Contains(K key) const noexcept {
+		return key >= 0 && key < index.size() && index[key] >= 0 && index[key] < values.size();
+		//note that index[key] should ALWAYS be equal to EMPTY (-1) if the key dont exist 
+	}
+	//WARNING: if key is invalid or dont exist => undefined behaviour
+	void Remove(K key) {
+		assert(0 <= key && key < index.size());
+		removeFromVector(values, index[key]);
+		index[key] = ArrayMap::EMPTY;
+	}
+	//WARNING: if key is invalid or dont exist => undefined behaviour
+	V& Get(K key) {
+		assert(0 <= key && key < index.size());
+		return values[index[key]];
+	}
+	void Clear() {
+		values.clear();
+		index.clear();
+	}
+};

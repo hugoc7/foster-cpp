@@ -35,7 +35,7 @@ private:
 	Vector2 spawnPos{4.5, 7};
 
 	//Network
-	std::vector<PlayerInfos> playersInfos;
+	ArrayMap<PlayerInfos> playersInfos;
 	TCPServer server;
 	TCPClient client;
 	bool isHost;
@@ -187,24 +187,23 @@ public:
 					ecs.addComponent<BoxCollider>(newEntity, 1, 2);
 					players.insert(newEntity);
 
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID, newEntity);
+					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, newEntity);
 					break;
 
-				case TcpMsgType::DISCONNECTION_REQUEST:
+				case TcpMsgType::DISCONNECTION_REQUEST: {
 					std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
 					udpServer.removeClient(new_message.playerID);
-					found = false;
-					for (int i = 0; i < playersInfos.size(); i++) {
-						if (found = (playersInfos[i].id == new_message.playerID)) {
-							//remove player's entity
-							ecs.removeEntity(playersInfos[i].entity);
-							removeFromVector(playersInfos, i);
-							break;
-						}
+					if (!playersInfos.Contains(new_message.playerID)) {
+						std::cerr << "\nPlayer ID not found, disconnection failed";
+						break;
 					}
-					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
+					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					ecs.removeEntity(infos.entity);
+					playersInfos.Remove(new_message.playerID);
 					break;
+				}
+					
 				default:
 					std::cerr << "Message TCP non traite par le jeu";
 					//TODO: handle this error in TCPclient and server !
@@ -235,40 +234,38 @@ public:
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
 					//===============================
-					playersInfos.emplace_back(new_message.playerName, new_message.playerID, /*TODO: put entity ID here*/0);
+					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, /*TODO: put entity ID here*/0);
 					break;
 
-				case TcpMsgType::NEW_CHAT_MESSAGE:
-					found = false;
-					for (int i = 0; i < playersInfos.size(); i++) {
-						if (found = (playersInfos[i].id == new_message.playerID)) {
-							std::cout << playersInfos[i].name << " : " << new_message.message << std::endl;
-							std::string pname{ playersInfos[i].name };
-							std::transform(pname.begin(), pname.end(), pname.begin(), ::toupper);
-							chatWindow.messages.enqueue(pname + " : " + new_message.message);
-							break;
-						}
+				case TcpMsgType::NEW_CHAT_MESSAGE: {
+					if (!playersInfos.Contains(new_message.playerID)) {
+						std::cerr << "\nPlayer ID not found, receiving chat message failed";
+						break;
 					}
-					if (!found) std::cerr << "\nPlayer ID not found, receiving chat message failed";
+					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					std::cout << infos.name << " : " << new_message.message << std::endl;
+					std::string pname{ infos.name };
+					std::transform(pname.begin(), pname.end(), pname.begin(), ::toupper);
+					chatWindow.messages.enqueue(pname + " : " + new_message.message);
 					break;
+				}
 
-				case TcpMsgType::NEW_DISCONNECTION:
-					found = false;
-					for (int i = 0; i < playersInfos.size(); i++) {
-						if (found = (playersInfos[i].id == new_message.playerID)) {
-							std::cout << playersInfos[i].name << " s'est deconnecte." << std::endl;
-							chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
-							removeFromVector(playersInfos, i);
-							break;
-						}
+				case TcpMsgType::NEW_DISCONNECTION: {
+					if (!playersInfos.Contains(new_message.playerID)) {
+						std::cerr << "\nPlayer ID not found, disconnection failed";
+						break;
 					}
-					if (!found) std::cerr << "\nPlayer ID not found, disconnection failed";
+					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					std::cout << infos.name << " s'est deconnecte." << std::endl;
+					chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
+					playersInfos.Remove(new_message.playerID);
 					break;
+				}
 
 				case TcpMsgType::PLAYER_LIST:
 					//start udp client on the port given by server
 					udpClient.start(ip, new_message.udpPort, udpPort);
-					playersInfos.clear();
+					playersInfos.Clear();
 					std::cout << "New player list received: \n";
 					assert(new_message.playerIDs.size() == new_message.playerNames.size());
 					for (int i = 0; i < new_message.playerIDs.size(); i++) {
@@ -276,7 +273,7 @@ public:
 
 						//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
 						//===============================
-						playersInfos.emplace_back(new_message.playerNames[i], new_message.playerIDs[i], /*todo: put entityID*/0);
+						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], /*todo: put entityID*/0);
 					}
 					std::cout << "=================" << std::endl;
 					break;
@@ -392,11 +389,11 @@ public:
 			//Handle network inputs
 			//======================
 			std::vector<Uint8> oldNetInputs;
-			for (int i = 0; i < playersInfos.size(); i++) {
+			for (int i = 0; i < playersInfos.Size(); i++) {
 				oldNetInputs.push_back(playersInfos[i].controls);
 			}
 			udpServer.getClientInputs(playersInfos);
-			for (int i = 0; i < playersInfos.size(); i++) {
+			for (int i = 0; i < playersInfos.Size(); i++) {
 				MovingObject& currPlayer{ ecs.getComponent<MovingObject>(playersInfos[i].entity) };
 				//right
 				if (playersInfos[i].controls & 1) {

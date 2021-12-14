@@ -13,7 +13,7 @@ protected:
 	Uint16 incomingPacketNumber{ 0xFFFF };
 	UDPpacketObject receivedPacket;
 	UDPpacketObject packetToSend;
-	const int UDP_CLIENT_THREAD_DELAY{ 10 };
+	const int UDP_CLIENT_THREAD_DELAY{ 5 };
 	//moodycamel::ReaderWriterQueue<ActionKey> userInputs;
 
 public:

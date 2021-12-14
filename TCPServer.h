@@ -42,6 +42,9 @@ public:
 	TCPsocketObject listeningTcpSock;
 	Uint16 udpServerPort;
 
+	const int MAX_CLIENTS = 10;
+	int connectedClients = 0;//number of connected clients
+	std::vector<int> availablePlayerIDs;
 
 	//SDLNet_SocketSet socketSet{ NULL };
 	//const int MAX_SOCKETS{16};
@@ -168,4 +171,17 @@ private:
 		}
 		return counter++;
 	}
+
+	Uint16 getNewPlayerID() {
+		assert(!availablePlayerIDs.empty());
+		Uint16 id = availablePlayerIDs.back();
+		availablePlayerIDs.pop_back();
+		return id;
+	}
+	void releasePlayerID(Uint16 id) {
+		assert(id < MAX_CLIENTS && id >= 0);
+		assert(availablePlayerIDs.size() < MAX_CLIENTS);
+		availablePlayerIDs.push_back(id);
+	}
+
 };
