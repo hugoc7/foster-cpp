@@ -111,8 +111,8 @@ public:
 	void sendPlayerList(ClientConnection& newClient) {
 	
 		//PACKET SCHEMA (unit = byte)
-		//packetSize(2) + type(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
-		//TODO: packetSize(2) + type(2) + UDP_PORT(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
+		//packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
+		//TODO: packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + playerEntityId(2) + nameSize(1) + name(n) ) 
 
 		Uint16 size{ 6 };
 		unsigned int currentByteIndex{ 6 };

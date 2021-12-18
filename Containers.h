@@ -16,7 +16,7 @@ public:
     /* ArrayList() : v(MEAN_ENTITIES) {
      }*/
 
-     //avec un move ca irait un peu plus vite, j'ai pas testé avec  const& ???
+     //avec un move ca irait un peu plus vite, j'ai pas testï¿½ avec  const& ???
     void insert(T val) {
         v.push_back(val);
     }
@@ -303,7 +303,7 @@ public:
 
 };
 
-//A sparsed vector = un vecteur à trous
+//A sparsed vector = un vecteur ï¿½ trous
 //template<typename T>
 class SparsedIndicesVector {
 private:

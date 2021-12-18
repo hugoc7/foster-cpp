@@ -65,7 +65,8 @@ public:
 
 		//assert(playerInfos.size() == channels.Size());
 		for (int i = 0; i < channels.size(); i++) {
-			playerInfos.Get(channels[i]).controls = clientInputs[channels[i]];
+			if(playerInfos.Contains(channels[i]))
+				playerInfos.Get(channels[i]).controls = clientInputs[channels[i]];
 		}
 	}
 
@@ -110,6 +111,8 @@ public:
 		//const int headerSize = 2 + 2;
 		int currByte = 2;
 		for (Uint16 i = 0; i < netEntities.size(); i++) {
+			Packing::WriteUint16(netEntities[i].id, &packet.packet->data[currByte]);
+			currByte += 2;
 			Packing::WriteUint8(netEntities[i].version, &packet.packet->data[currByte]);
 			currByte += 1;
 			Packing::WriteFloat(netEntities[i].x, &packet.packet->data[currByte]);

@@ -5,10 +5,10 @@
 
 //A box collider is a rectangle centered on a object which is used to detect collisions
 struct BoxCollider {
-	int w;
-	int h;
+	float w;
+	float h;
 	BoxCollider() = default;
-	BoxCollider(int w, int h) : w{ w }, h{ h } {};
+	BoxCollider(float w, float h) : w{ w }, h{ h } {};
 };
 
 struct CollisionDetector {
@@ -30,4 +30,7 @@ struct MovingObject : public VisibleObject {
 	Vector2 move{0,0};
 	MovingObject() = default;
 	MovingObject(float x, float y) : VisibleObject(x, y) {};
+	MovingObject(float x, float y, float vx, float vy) : 
+		VisibleObject(x, y), newSpeed{ vx, vy }, speed{ vx, vy } 
+	{};
 };

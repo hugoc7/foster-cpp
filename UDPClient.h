@@ -54,19 +54,13 @@ public:
 
 	void stop() {
 		if (!running) return;
-		running = false;//std::atomic is noexcept
+		running = false;
 		thread.join();
 	}
 
-	/*
-	Uint16 id;
-	Uint8 version;
-	float x;
-	float y;
-	Uint8 type;
-	*/
 	void receiveNetEntitiesVec(UDPpacketObject& packet) {
-		const int netEntitySize = 1 + 4 + 4 + 4 + 4 + 1;
+		// id + version + x + y + vx + vy + type
+		const int netEntitySize = 2 + 1 + 4 + 4 + 4 + 4 + 1;
 		const int headerSize = 2 + 2;
 		if (!socket.recv(packet)) return;
 
@@ -92,10 +86,13 @@ public:
 			return;
 		}
 		//const int packetVecLen = (packet.packet->len - headerSize) / netEntitySize;
+		entitiesLock.lock();
 		int currByte = 2;
 		NetworkEntity currEntity{};
-		Uint16 id{0};
-		while (currByte < packet.packet->len - 2) {
+		netEntities.clear();
+		for (int nbEntitiesReceived{ 0 }; currByte < packet.packet->len - 2; nbEntitiesReceived++) {
+			currEntity.id = Packing::ReadUint16(&packet.packet->data[currByte]);
+			currByte += 2;
 			currEntity.version = Packing::ReadUint8(&packet.packet->data[currByte]);
 			currByte += 1;
 			currEntity.x = Packing::ReadFloat(&packet.packet->data[currByte]);
@@ -110,18 +107,12 @@ public:
 			currByte += 1;
 
 			//update entity vector
-			entitiesLock.lock();
-			if (id >= netEntities.size())
-				netEntities.resize(id + 1);
-			netEntities[id] = currEntity;
-			entitiesLock.unlock();
+			netEntities.push_back(currEntity);
 
-
-			/*std::cout << "Recv entity ("<< id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
+			/*std::cout << "Recv entity ("<< currEntity.id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
 				<< "; " << currEntity.vx << "; " << currEntity.vy << "\n";*/
-			id++;
 		}
-
+		entitiesLock.unlock();
 	}
 	
 	void loop() {

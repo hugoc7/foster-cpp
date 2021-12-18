@@ -17,6 +17,12 @@
 #include "UDPClient.h"
 #include "UDPServer.h"
 #include <mutex>
+#include <cmath>
+
+enum class EntityType : Uint8 {
+	PLAYER = 0,
+	PROJECTILE = 1,
+};
 
 class Game {
 private:
@@ -33,6 +39,7 @@ private:
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 	EntityID player;
 	Vector2 spawnPos{4.5, 7};
+	Vector2 charactersDimensions{1, 2};
 
 	//Network
 	ArrayMap<PlayerInfos> playersInfos;
@@ -47,6 +54,15 @@ private:
 	UDPServer udpServer;
 	std::vector<EntityID> localEntityIds;
 	//std::vector<std::pair<int, Uint8>> clientInputs;//first = player ID ; second = keyboard input
+	
+	//std::vector<NetworkEntity> localNetEntities;
+	std::vector<bool> hasEntityBeenUpdated;
+	std::vector<bool> isEntityActive;
+	std::vector<int> netEntityDeleteCountDown;
+	std::vector<int> localNetEntityIDs;
+	std::vector<int> localNetEntityVersions;
+	std::vector<EntityType> localNetEntityTypes;
+	const int netEntityDeleteDelay = 10000;//10 sec
 
 
 
@@ -72,28 +88,56 @@ public:
 			ecs.addComponent<BoxCollider>(player, 1, 2);
 			players.insert(player);
 		}
-
-		//players.emplace_back(4.5, 7);
-		//playersColliders.emplace_back(1, 2);
-
 		readPlateformsFromFile("map.txt", plateforms);
-		/*plateforms.emplace_back(4.5f, 3.5f);
-		plateformColliders.emplace_back(5.0f, 1.0f);
-
-		plateforms.emplace_back(9.5f, 5.5f);
-		plateformColliders.emplace_back(3.0f, 1.0f);*/
-
-		
 	}
+	//TODO: put this 5 followinf fucntions in a class NetworkManager
+	//remove the components of an entity
+	void removeAllComponents(EntityID entity, EntityType type) {
+		if (type == EntityType::PLAYER) {
+			ecs.removeComponent<MovingObject>(entity);
+			ecs.removeComponent<BoxCollider>(entity);
+		}
+	}
+	//desactivate the components of an entity
+	void desactivateAllComponents(EntityID entity, EntityType type) {
+		if (type == EntityType::PLAYER) {
+			players.erase(entity);
+		}
+	}
+	//activate the components of an entity
+	void activateAllComponents(EntityID entity, EntityType type) {
+		if (type == EntityType::PLAYER) {
+			players.insert(entity);
+		}
+	}
+	//add all components of an entity
+	void addAllComponents(EntityID entity, EntityType type, float x, float y, float vx, float vy) {
+		if (type == EntityType::PLAYER) {
+			ecs.addComponent<MovingObject>(entity, x, y, vx, vy);
+			ecs.addComponent<BoxCollider>(entity, charactersDimensions.x, charactersDimensions.y);
+		}
+	}
+	//udate all components of an entity
+	void updateAllComponents(EntityID entity, EntityType type, float x, float y, float vx, float vy) {
+		if (type == EntityType::PLAYER) {
+			MovingObject& moveComp = ecs.getComponent<MovingObject>(entity);
+			moveComp.position.x = x;
+			moveComp.position.y = y;
+			moveComp.newSpeed.x = vx;
+			moveComp.newSpeed.y = vy;
+			moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
+		}
+	}
+
 	//WARNING: it modifies the ecs global variable
-	void updateNetEntitiesPos() {
-		//VERY MINIMAL VERSION OF THE ALGORITHM JUST TO SEE PLAYERS MOVE ON SCREEN !
+	void updateNetEntitiesPos(float deltaTime) {
 
 		//client side
 		if (!isHost) {
-			std::lock_guard<std::mutex>(udpClient.entitiesMutex);
+			std::lock_guard<std::mutex> lockClient(udpClient.entitiesMutex);
 			std::vector<NetworkEntity> const& packet = udpClient.netEntities;
 
+			/*
 			//1-1 correspondance between packet array and localEntitiesID array
 			for (int i = 0; i < packet.size(); i++) {
 				//create new entity
@@ -114,23 +158,126 @@ public:
 					moveComp.newSpeed.y = packet[i].vy;
 					moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
 				}
+			}*/
+
+			std::fill(hasEntityBeenUpdated.begin(), hasEntityBeenUpdated.end(), false);
+
+			assert(localNetEntityVersions.size() == localNetEntityIDs.size());
+			assert(localNetEntityVersions.size() == hasEntityBeenUpdated.size());
+			assert(localNetEntityVersions.size() == isEntityActive.size());
+			assert(localNetEntityVersions.size() == netEntityDeleteCountDown.size());
+			assert(localNetEntityVersions.size() == localNetEntityTypes.size());
+
+			for (int i = 0; i < packet.size(); i++) {
+				int netID = packet[i].id;
+				//std::cout << i << ", " << netID << "\n";
+				if (netID < localNetEntityIDs.size()) {
+					//add a new entity
+					
+					if (!isEntityActive[netID] && netEntityDeleteCountDown[netID] == 0) {
+						localNetEntityIDs[netID] = ecs.addEntity();
+						isEntityActive[netID] = true;
+						localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
+						localNetEntityVersions[netID] = packet[i].version;
+
+						addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
+							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
+						activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+					}
+					//update existing entitys
+					else if (packet[i].version == localNetEntityVersions[netID]) {
+						//if the entity was desactivated in the ECS it should be activated
+						if (!isEntityActive[netID]) {
+							activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+							isEntityActive[i] = true;
+						}
+						updateAllComponents(localNetEntityIDs[netID], static_cast<EntityType>(packet[i].type), 
+							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
+					}
+					//replace existing entity (delete and add)
+					else {
+						if (isEntityActive[netID]) {
+							desactivateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+						}
+						removeAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+
+						localNetEntityVersions[netID] = packet[i].version;
+						localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
+						isEntityActive[netID] = true;
+						addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
+							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
+						activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+					}
+					hasEntityBeenUpdated[netID] = true;
+				}
+				//add new entity
+				else {
+					localNetEntityTypes.resize(netID + 1);
+					hasEntityBeenUpdated.resize(netID + 1, false);
+					localNetEntityIDs.resize(netID + 1);
+					localNetEntityVersions.resize(netID + 1);
+					isEntityActive.resize(netID + 1, false);
+					netEntityDeleteCountDown.resize(netID + 1, 0);
+
+
+					localNetEntityIDs[netID] = ecs.addEntity();
+					hasEntityBeenUpdated[netID] = true;
+					isEntityActive[netID] = true;
+					localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
+					localNetEntityVersions[netID] = packet[i].version;
+
+					addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
+						packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
+					activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
+				}
+			}
+
+			
+			for (int i = 0; i < hasEntityBeenUpdated.size(); i++) {
+				//desactivate entities that are not in the packet
+				if (!hasEntityBeenUpdated[i] && isEntityActive[i]) {
+					desactivateAllComponents(localNetEntityIDs[i], localNetEntityTypes[i]);
+					netEntityDeleteCountDown[i] = netEntityDeleteDelay;
+					isEntityActive[i] = false;
+				}
+				else if (netEntityDeleteCountDown[i] > 0) {
+					netEntityDeleteCountDown[i] -= std::lround(1000.0f * deltaTime);
+					//delete expired entity
+					if (netEntityDeleteCountDown[i] <= 0) {
+						netEntityDeleteCountDown[i] = 0;
+						removeAllComponents(localNetEntityIDs[i], localNetEntityTypes[i]);
+						ecs.removeEntity(localNetEntityIDs[i]);
+					}
+				}
 			}
 		}
 		//server side
 		else {
-			std::lock_guard<std::mutex>(udpServer.entitiesMutex);
+			std::lock_guard<std::mutex> lockServer(udpServer.entitiesMutex);
 		
+			//TODO: turn this into 3 methods :  addEntity removeEntity et updateEntity
 			for (int i = 0; i < players.v.size(); i++) {
 				//create new entity
 				MovingObject& player = ecs.getComponent<MovingObject>(players.v[i]);
 				if (i >= udpServer.netEntities.size()) {
-					udpServer.netEntities.emplace_back(0, player.position.x, player.position.y,
-						player.newSpeed.x, player.newSpeed.y, 0);
+					udpServer.netEntities.emplace_back(i, 0, player.position.x, player.position.y,
+						player.newSpeed.x, player.newSpeed.y, static_cast<Uint8>(EntityType::PLAYER));
 				}
 				//update entity
 				else {
+					/*Uint16 id;
+					Uint8 version;
+					float x;
+					float y;
+					float vx;
+					float vy;
+					Uint8 type;*/
+					//udpServer.netEntities[i].version = 
+					//udpServer.netEntities[i].type = static_cast<Uint8>(EntityType::PLAYER);
 					udpServer.netEntities[i].x = player.position.x;
 					udpServer.netEntities[i].y = player.position.y;
+					udpServer.netEntities[i].vx = player.newSpeed.x;
+					udpServer.netEntities[i].vy = player.newSpeed.y;
 				}
 			}
 		}
@@ -167,7 +314,7 @@ public:
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
 				case TcpMsgType::END_OF_THREAD:
-					chatWindow.messages.enqueue("Arret du serveur suite à une erreur réseau: " + std::move(new_message.message));
+					chatWindow.messages.enqueue("Arret du serveur suite ï¿½ une erreur rï¿½seau: " + std::move(new_message.message));
 					server.stop();
 					break;
 				case TcpMsgType::SEND_CHAT_MESSAGE:
@@ -305,7 +452,7 @@ public:
 			if (deltaTime >= refreshTimeInterval) {
 				handleNetwork(chatWindow);
 
-				updateNetEntitiesPos();
+				updateNetEntitiesPos(deltaTime);
 
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);

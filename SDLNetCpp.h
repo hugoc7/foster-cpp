@@ -5,8 +5,6 @@
 #include <iostream>
 
 //SDL NET WRAPPER FOR C++ (RAII)
-//TODO ... WORK IN PROGRESS
-//ALMOST FINISHED ! JUST NEEDS TO BE INTEGRATED AND TESTED !
 
 //WARNING: peut etre rajouter une condition if (socket!=NULL) throw au debut de chaque methode de TCPSocketObject
 

@@ -6,15 +6,17 @@
 #include "Packing.h"
 #include "CRC.h"
 
-struct NetworkEntity {
+struct NetworkEntity
+{
+	Uint16 id;
 	Uint8 version;
 	float x;
 	float y;
 	float vx;
 	float vy;
 	Uint8 type;
-	NetworkEntity(Uint8 version, float x, float y, float vx, float vy, Uint8 type) :
-		version{ version }, x{ x }, y{ y }, type{ type }, vx{ vx }, vy{ vy }
+	NetworkEntity(Uint16 id, Uint8 version, float x, float y, float vx, float vy, Uint8 type) :
+		id{ id }, version { version }, x{ x }, y{ y }, type{ type }, vx{ vx }, vy{ vy }
 	{
 	}
 	NetworkEntity() = default;
