@@ -398,6 +398,9 @@ public:
 	V const& operator[](int index) const {
 		return values[index];
 	}
+	V& operator[](int index) {
+		return values[index];
+	}
 	//returns false if the key is invalid or not contained in the map
 	bool Contains(K key) const noexcept {
 		return key >= 0 && key < index.size() && index[key] >= 0 && index[key] < values.size();

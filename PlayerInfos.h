@@ -2,10 +2,11 @@
 
 #include <string>
 #include "ECS.h"
+#include <atomic>
 
 struct PlayerInfos {
 	std::string name;
-	Uint32 id;// network ID, TODO: should be between 0 and MAX_CLIENTS
+	Uint32 id;
 	EntityID entity;
 	Uint8 controls{0};
 
@@ -14,4 +15,15 @@ struct PlayerInfos {
 		name{ name }, id{ id }, entity{entity} {};
 	PlayerInfos(std::string&& name, Uint32 id, EntityID entity) :
 		name{ std::move(name) }, id{ id }, entity{entity} {};
+};
+
+struct ServerPlayerInfos {
+	EntityID entity{};
+	bool playerListNeedsToBeSent{ false };
+	Uint16 clientIndex{};
+
+
+	ServerPlayerInfos(Uint16 clientIndex) :
+		clientIndex{ clientIndex }
+	{};
 };

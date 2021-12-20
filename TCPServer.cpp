@@ -7,6 +7,11 @@ void TCPServer::closeConnection(int clientID) {
 			std::move(connections[clientID].playerName), connections[clientID].playerID);
 		connections[clientID].connectedToGame = false;//useless ?
 		releasePlayerID(connections[clientID].playerID);
+
+		std::unique_lock<std::mutex> lock(playerInfosMutex);
+		assert(playerInfos.Contains(connections[clientID].playerID));
+		playerInfos.Remove(connections[clientID].playerID);
+		lock.unlock();
 	}
 	try_releaseRecvBuffer(connections[clientID]);
 	connections[clientID].close(socketSet);//close the socket
@@ -30,36 +35,50 @@ void TCPServer::receiveMessagesFromClients() {
 
 				switch (newMessage.type) {
 					//if client request disconnection
-				case TcpMsgType::DISCONNECTION_REQUEST:
+				case TcpMsgType::DISCONNECTION_REQUEST: {
 
 					//player name is moved because the client struct will be destroyed
 					newMessage.playerName = std::move(connections[clientID].playerName);
 					assert(connections[clientID].playerID >= 0);
 					newMessage.playerID = connections[clientID].playerID;
 					connections[clientID].connectedToGame = false;
+
+					std::unique_lock<std::mutex> lock(playerInfosMutex);
+					assert(playerInfos.Contains(connections[clientID].playerID));
+					playerInfos.Remove(connections[clientID].playerID);
+					lock.unlock();
+
 					releasePlayerID(connections[clientID].playerID);
 					closeConnection(clientID);
 					messages.enqueue(std::move(newMessage));
 					break;
+				}
 
-				case TcpMsgType::CONNECTION_REQUEST:
+				case TcpMsgType::CONNECTION_REQUEST: {
 
 					/*if (connectedClients++ > MAX_CLIENTS) {
 						sendGoodbye(connections[clientID], "This server is full (too much players).");
 						closeConnection(clientID);//TODO: pb here
 						continue;
 					}*/
-					
+
 					connections[clientID].playerName = newMessage.playerName;
 					connections[clientID].connectedToGame = true;
-					connections[clientID].playerID = getNewPlayerID();
+					Uint16 playerID = getNewPlayerID();
+					connections[clientID].playerID = playerID;
 
-					newMessage.playerID = connections[clientID].playerID;
+					std::unique_lock<std::mutex> lock(playerInfosMutex);
+					playerInfos.Add(playerID, clientID);
+					lock.unlock();
+
+					assert(playerID < playerIdToConnectionIndex.size());
+					playerIdToConnectionIndex[playerID] = clientID;
+
+					newMessage.playerID = playerID;
 					newMessage.clientIp = std::move(connections[clientID].tcpSocket.getPeerIP());
-					sendPlayerList(connections[clientID]);
-					sendNewPlayerNotification(connections[clientID]);
 					messages.enqueue(std::move(newMessage));
 					break;
+				}
 
 				case TcpMsgType::SEND_CHAT_MESSAGE:
 					newMessage.playerName = connections[clientID].playerName;
@@ -121,6 +140,7 @@ void TCPServer::loop() {
 
 			if (connections.size() > 0) {
 				receiveMessagesFromClients();
+				informClientsOfNewPlayers();
 			}
 
 			for (int i = 0; i < connections.size(); i++) {
@@ -135,7 +155,7 @@ void TCPServer::loop() {
 		}
 	}
 	catch (std::exception const& e) {
-		std::cerr << e.what() << std::endl;
+		std::cerr << "\nException in server thread: " << e.what() << std::endl;
 		messages.emplace(TcpMsgType::END_OF_THREAD, std::string("Exception: ") + e.what());
 		stopReason = e.what();
 	}
@@ -187,6 +207,7 @@ void TCPServer::start(Uint16 port, Uint16 udpPort) {
 TCPServer::TCPServer() : TCPNetworkNode(), messages(MAX_MESSAGES) {
 	//start();
 	availablePlayerIDs.reserve(MAX_CLIENTS);
+	playerIdToConnectionIndex.resize(MAX_CLIENTS);
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		availablePlayerIDs.push_back(MAX_CLIENTS - 1 - i);
 	}
