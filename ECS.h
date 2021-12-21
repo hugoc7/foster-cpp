@@ -115,9 +115,10 @@ public:
 
         ComponentID componentToDelete = entities[entity].components[compType];
         removeFromVector(compVec, (int)componentToDelete);//replace the componentToDelete by the last component
-        removeFromVector(componentToEntity, (int)componentToDelete);
+        removeFromVector(componentToEntity[compType], (int)componentToDelete);
 
-        if (compVec->size() > 0) {
+        //if we moved the last component
+        if (componentToDelete < compVec->size() - 1) {
             assert(componentToEntity[compType].size() == compVec->size());
             //now the entity of the replaced component has the good index to the component
             entities[componentToEntity[compType][componentToDelete]].components[compType] = componentToDelete;

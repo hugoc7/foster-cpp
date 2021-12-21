@@ -48,7 +48,7 @@ enum class TcpMsgType {
 	EMPTY = 11
 };
 
-//TODO: refactor this class : union ? std::variant ?
+//TODO: refactor this class with either heritance + polymorphism OR std::variant !
 struct TCPmessage {
 	TcpMsgType type;
 	std::string message;//can be either a text message or a player name
@@ -62,6 +62,7 @@ struct TCPmessage {
 	//only for player list packet, but TODO it should be generalized to all packets
 	std::vector<std::string> playerNames;
 	std::vector<Uint16> playerIDs;
+	std::vector<Uint16> entityIDs;
 
 	TCPmessage() = default;
 	TCPmessage(TCPmessage&& other) = default;
@@ -79,6 +80,7 @@ struct TCPmessage {
 		type{ std::move(type) }
 	{
 	}
+	//TODO: use Packing functions !
 	TCPmessage(UniqueByteBuffer const& buffer, int bufferSize)
 	{
 		if (bufferSize < 4)
@@ -104,9 +106,10 @@ struct TCPmessage {
 			//nothing
 			break;
 		case TcpMsgType::NEW_CONNECTION:
-			if (bufferSize < 6)
-				throw std::runtime_error("Received invalid TCP message (NEW_CONNECTION) : no player ID");
+			if (bufferSize < 8)
+				throw std::runtime_error("Received invalid TCP message (NEW_CONNECTION) : no player or entity ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
+			entityIDs.push_back(Packing::ReadUint16(&buffer.get()[6]));
 			playerName.assign(reinterpret_cast<const char*>(buffer.get()) + 6, bufferSize - 6u);
 			break;
 		case TcpMsgType::NEW_DISCONNECTION:
@@ -122,7 +125,7 @@ struct TCPmessage {
 			break;
 		case TcpMsgType::PLAYER_LIST:
 			//PACKET SCHEMA (unit = byte)
-			//packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
+			//NEW: packetSize(2) + type(2) + udpPort(2) + Nplayers * (playerId(2) + entityID(2) + nameSize(1) + name(n) ) 
 			
 			//read udp server port
 			if (bufferSize < 6)
@@ -134,6 +137,11 @@ struct TCPmessage {
 				if (currentByteIndex + 1 >= bufferSize)
 					throw std::runtime_error("Error reading player list packet (playerID)");
 				playerIDs.emplace_back(SDLNet_Read16(buffer.get() + currentByteIndex));
+
+				currentByteIndex += 2;
+				if (currentByteIndex + 1 >= bufferSize)
+					throw std::runtime_error("Error reading player list packet (entityID)");
+				entityIDs.emplace_back(Packing::ReadUint16(&buffer.get()[currentByteIndex]));
 
 				currentByteIndex += 2;
 				if (currentByteIndex >= bufferSize)

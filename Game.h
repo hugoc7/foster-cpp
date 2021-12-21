@@ -314,7 +314,7 @@ public:
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
 				case TcpMsgType::END_OF_THREAD:
-					chatWindow.messages.enqueue("Arret du serveur suite � une erreur r�seau: " + std::move(new_message.message));
+					chatWindow.messages.enqueue("Arret du serveur suite a une erreur reseau: " + std::move(new_message.message));
 					server.stop();
 					break;
 				case TcpMsgType::SEND_CHAT_MESSAGE:
@@ -323,18 +323,20 @@ public:
 					break;
 
 				case TcpMsgType::CONNECTION_REQUEST:
-					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					std::cout << "New UDP client: " << new_message.clientIp << " : " << new_message.udpPort;
 					udpServer.addClient(new_message.playerID, new_message.clientIp, new_message.udpPort);
 
 					//create new entity for the player
 					newEntity = ecs.addEntity();
+					std::cout << new_message.playerName << " s'est connecte. Entite = " << newEntity << std::endl;
 					ecs.addComponent<MovingObject>(newEntity, spawnPos.x, spawnPos.y);
 					ecs.addComponent<BoxCollider>(newEntity, 1, 2);
 					players.insert(newEntity);
 
 					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, newEntity);
+					//TODO: convert newEntityID to network entity ID !!!
+					server.playerEntityCreated(new_message.playerID, /*NO!*/newEntity);
 					break;
 
 				case TcpMsgType::DISCONNECTION_REQUEST: {
@@ -346,6 +348,8 @@ public:
 						break;
 					}
 					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					removeAllComponents(infos.entity, EntityType::PLAYER);
+					desactivateAllComponents(infos.entity, EntityType::PLAYER);
 					ecs.removeEntity(infos.entity);
 					playersInfos.Remove(new_message.playerID);
 					break;
@@ -379,9 +383,9 @@ public:
 				case TcpMsgType::NEW_CONNECTION:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
-					//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
-					//===============================
-					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, /*TODO: put entity ID here*/0);
+					assert(!new_message.entityIDs.empty());
+					//TODO: convert network entity ID to local entity ID
+					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, /*No!*/new_message.entityIDs.at(0));
 					break;
 
 				case TcpMsgType::NEW_CHAT_MESSAGE: {
@@ -416,11 +420,12 @@ public:
 					std::cout << "New player list received: \n";
 					assert(new_message.playerIDs.size() == new_message.playerNames.size());
 					for (int i = 0; i < new_message.playerIDs.size(); i++) {
-						std::cout << new_message.playerIDs[i] << " : " << new_message.playerNames[i] << std::endl;
+						std::cout << new_message.playerIDs[i] << " : " << new_message.playerNames[i] 
+							<< "(entite = "<< new_message.entityIDs[i] << ")" << std::endl;
 
-						//TODO: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
+						//NEW: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
 						//===============================
-						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], /*todo: put entityID*/0);
+						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], new_message.entityIDs[i]);
 					}
 					std::cout << "=================" << std::endl;
 					break;
