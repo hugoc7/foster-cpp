@@ -5,6 +5,8 @@
 #include "PlayerInfos.h"
 #include <chrono>
 
+
+
 struct UdpClientModification {
 	std::string ip;
 	Uint16 port;
@@ -17,22 +19,6 @@ struct UdpClientModification {
 
 //Max clients: 32 (SDL_NET_MAX_UDP_CHANNELS)
 class UDPServer : public UDPNetworkNode {
-
-protected:
-	UDPpacketObject packetToSend{ MAX_UDP_PACKET_SIZE };
-	Uint16 outgoingPacketNumber[SDLNET_MAX_UDPCHANNELS];
-	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
-	std::chrono::time_point<std::chrono::steady_clock> lastTimeEntitiesSent;
-
-	const int sendEntitiesPeriod{ 30 };
-	const int UDP_SERVER_THREAD_DELAY{ 5 };
-
-	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
-	const int CLIENTS_UPDATE_PERIOD{ 1000 };
-	Uint8 clientInputs[SDLNET_MAX_UDPCHANNELS];
-	std::mutex clientInputsMutex;
-	std::vector<int> channels;
-
 public:
 
 	UDPServer()  {
@@ -59,6 +45,12 @@ public:
 		running = false;//std::atomic is noexcept
 		thread.join();
 	}
+	void addClient(int playerID, std::string const& ip, Uint16 port) {
+		clientModififcationsQueue.emplace(playerID, ip, port);
+	}
+	void removeClient(int playerID) {
+		clientModififcationsQueue.emplace(playerID);
+	}
  
 	void getClientInputs(ArrayMap<PlayerInfos>& playerInfos)  {
 		std::lock_guard<std::mutex> lock(clientInputsMutex);
@@ -70,9 +62,68 @@ public:
 		}
 	}
 
+	void writeEntitiesToPacket(std::vector<int> const& netIDs, std::vector<int> const& entityIDs, std::vector<int> const& versions, 
+		std::vector<EntityType> const& types, ECS const& ecs_arg) 
+	{
+		std::lock_guard<std::mutex> lockServer(entitiesMutex);
+		static const int netEntitySize = 2 + 1 + 4 + 4 + 4 + 4 + 1;
+
+		int currByte = 2;//2 bytes for packet number
+		int newPacketSize = 2 + netEntitySize * netIDs.size() + 2;
+		assert(newPacketSize <= MAX_UDP_PACKET_SIZE);
+		if (packetToSend.packet->maxlen < newPacketSize) {
+			packetToSend.resize(newPacketSize);
+		}
+		packetToSend.packet->len = newPacketSize;
+
+		//for each networked entity
+		for (int j = 0; j < netIDs.size(); j++) {
+			int netID = netIDs[j];
+			
+			//TODO: build a different UDP packet for each player, based on his camera
+
+
+			MovingObject const& movingComp = ecs_arg.getComponent<MovingObject>(entityIDs.at(netID));
+
+			Packing::WriteUint16(netID, &packetToSend.packet->data[currByte]);
+			currByte += 2;
+			Packing::WriteUint8(versions.at(netID), &packetToSend.packet->data[currByte]);
+			currByte += 1;
+			Packing::WriteFloat(movingComp.position.x, &packetToSend.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteFloat(movingComp.position.y, &packetToSend.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteFloat(movingComp.newSpeed.x, &packetToSend.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteFloat(movingComp.newSpeed.x, &packetToSend.packet->data[currByte]);
+			currByte += 4;
+			Packing::WriteUint8(static_cast<Uint8>(types.at(netID)), &packetToSend.packet->data[currByte]);
+			currByte += 1;
+			/*std::cout << "Send entity (" << i << ") : " << (int)netEntities[i].version << " " << (int)netEntities[i].type
+				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;*/
+		}
+	}
+
+protected:
+
+	UDPpacketObject packetToSend{ MAX_UDP_PACKET_SIZE };
+	Uint16 outgoingPacketNumber[SDLNET_MAX_UDPCHANNELS];
+	Uint16 incomingPacketNumber[SDLNET_MAX_UDPCHANNELS];
+	std::chrono::time_point<std::chrono::steady_clock> lastTimeEntitiesSent;
+
+	const int sendEntitiesPeriod{ 30 };
+	const int UDP_SERVER_THREAD_DELAY{ 5 };
+
+	moodycamel::ReaderWriterQueue<UdpClientModification> clientModififcationsQueue;
+	const int CLIENTS_UPDATE_PERIOD{ 1000 };
+	Uint8 clientInputs[SDLNET_MAX_UDPCHANNELS];
+	std::mutex clientInputsMutex;
+	std::vector<int> channels;
+
 	void receiveClientInputs(UDPpacketObject& packet) {
 		if (!socket.recv(packet)) return;
 
+		//TODO: throw an exception, and then handle this error
 		assert(packet.packet->len > 4 && packet.packet->len <= MAX_UDP_PACKET_SIZE);
 
 		//Verify checksum for integrity (against random errors)
@@ -104,45 +155,20 @@ public:
 	}
 
 	//send net entities vector to all channels
-	void sendNetEntitiesVec(UDPpacketObject& packet ) {
-		if (channels.empty() || netEntities.empty()) return;
-		entitiesLock.lock();
+	void sendNetEntities(UDPpacketObject& packet ) {
+		if (channels.empty()) return;
+
+		std::lock_guard<std::mutex> lock(entitiesMutex);
 		//const int netEntitySize = 1 + 4 + 4 + 4 + 4+ 1;
 		//const int headerSize = 2 + 2;
-		int currByte = 2;
-		for (Uint16 i = 0; i < netEntities.size(); i++) {
-			Packing::WriteUint16(netEntities[i].id, &packet.packet->data[currByte]);
-			currByte += 2;
-			Packing::WriteUint8(netEntities[i].version, &packet.packet->data[currByte]);
-			currByte += 1;
-			Packing::WriteFloat(netEntities[i].x, &packet.packet->data[currByte]);
-			currByte += 4;
-			Packing::WriteFloat(netEntities[i].y, &packet.packet->data[currByte]);
-			currByte += 4;
-			Packing::WriteFloat(netEntities[i].vx, &packet.packet->data[currByte]);
-			currByte += 4;
-			Packing::WriteFloat(netEntities[i].vy, &packet.packet->data[currByte]);
-			currByte += 4;
-			Packing::WriteUint8(netEntities[i].type, &packet.packet->data[currByte]);
-			currByte += 1;
-			/*std::cout << "Send entity (" << i << ") : " << (int)netEntities[i].version << " " << (int)netEntities[i].type
-				<< " " << netEntities[i].x << " " << netEntities[i].y << std::endl;*/
-		}
-		packet.packet->len = currByte + 2;
 		for (int i = 0; i < channels.size(); i++) {
 			Packing::WriteUint16(outgoingPacketNumber[channels[i]]++, packet.packet->data);
 			calculateChecksum(packet);
 			socket.send(channels[i], packet);
 		}
-		entitiesLock.unlock();
 	}
 
-	void addClient(int playerID, std::string const& ip, Uint16 port) {
-		clientModififcationsQueue.emplace(playerID, ip, port);
-	}
-	void removeClient(int playerID) {
-		clientModififcationsQueue.emplace(playerID);
-	}
+	
 	//TODO: optimize this by using maybe try_lock ? or lock ?
 	void updateClients() {
 		UdpClientModification clientModification;
@@ -185,7 +211,7 @@ public:
 				auto now = std::chrono::steady_clock::now();
 				if (now - lastTimeEntitiesSent >= sendEntitiesPeriod * ms) {
 					lastTimeEntitiesSent = now;
-					sendNetEntitiesVec(packetToSend);
+					sendNetEntities(packetToSend);
 				}
 
 				//if ((now = SDL_GetTicks()) - lastClientsUpdate >= CLIENTS_UPDATE_PERIOD) {

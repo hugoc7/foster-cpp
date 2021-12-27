@@ -19,10 +19,7 @@
 #include <mutex>
 #include <cmath>
 
-enum class EntityType : Uint8 {
-	PLAYER = 0,
-	PROJECTILE = 1,
-};
+
 
 class Game {
 private:
@@ -31,10 +28,6 @@ private:
 	float deltaTime{}, refreshTimeInterval{ 1.0f / FPS};
 	ArrayList<EntityID> plateforms{};
 	ArrayList<EntityID> players{};
-	/*std::vector<VisibleObject> plateforms{};
-	std::vector<BoxCollider> plateformColliders{};
-	std::vector<MovingObject> players{};
-	std::vector<BoxCollider> playersColliders{};*/
 	Renderer renderingManager{};
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 	EntityID player;
@@ -55,14 +48,19 @@ private:
 	std::vector<EntityID> localEntityIds;
 	//std::vector<std::pair<int, Uint8>> clientInputs;//first = player ID ; second = keyboard input
 	
+	//TODO: put all this in a class which manage networked entities !
+	//==================================================================
 	//std::vector<NetworkEntity> localNetEntities;
 	std::vector<bool> hasEntityBeenUpdated;
 	std::vector<bool> isEntityActive;
 	std::vector<int> netEntityDeleteCountDown;
-	std::vector<int> localNetEntityIDs;
+	std::vector<int> localNetEntityIDs;//networked entity ECS ids
 	std::vector<int> localNetEntityVersions;
 	std::vector<EntityType> localNetEntityTypes;
+	std::vector<int> availableNetIDs;//available networked entity netIDs
+	std::vector<int> netIDs;//networked entity netIDs
 	const int netEntityDeleteDelay = 10000;//10 sec
+	//==================================================================
 
 
 
@@ -127,6 +125,61 @@ public:
 			moveComp.newSpeed.y = vy;
 			moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
 		}
+	}
+
+	//Used by server
+	//TODO: create a special class to manage all operations on networkd entities !
+	NetEntityID addNetEntity(EntityID entityID, EntityType type) {
+		assert(localNetEntityTypes.size() == localNetEntityVersions.size());
+		assert(localNetEntityIDs.size() == localNetEntityVersions.size());
+		assert(netIDs.size() <= localNetEntityVersions.size());
+
+		NetEntityID netID{};
+
+		//no netIDs availables, create a new netID
+		if (availableNetIDs.empty()) {
+			assert(netIDs.size() == localNetEntityVersions.size());
+			netID = localNetEntityIDs.size();
+
+			localNetEntityVersions.push_back(0);
+			localNetEntityTypes.push_back(type);
+			localNetEntityIDs.push_back(entityID);
+		}
+		else {
+			netID = availableNetIDs.back();
+			assert(netID < localNetEntityVersions.size() && netID >= 0);
+
+			availableNetIDs.pop_back();
+			localNetEntityTypes[netID] = type;
+			localNetEntityIDs[netID] = entityID;
+			if (localNetEntityVersions[netID] >= 255)
+				localNetEntityVersions[netID] = 0;
+			else
+				localNetEntityVersions[netID]++;
+		}
+		netIDs.push_back(netID);
+		return netID;
+	}
+	//Used by server
+	//TODO: create a special class to manage all operations on networkd entities !
+	void removeNetEntity(EntityID entityID) {
+		assert(localNetEntityTypes.size() == localNetEntityVersions.size());
+		assert(localNetEntityIDs.size() == localNetEntityVersions.size());
+		assert(netIDs.size() <= localNetEntityVersions.size());
+		
+		//find and remove netID (we can implement another system)
+		NetEntityID netID{0};
+		bool found{false};
+		for (int i = 0; i < netIDs.size(); i++) {
+			if (localNetEntityIDs.at(netIDs[i]) == entityID) {
+				netID = netIDs[i];
+				removeFromVector(netIDs, i);
+				found = true;
+				break;
+			}
+		}
+		assert(found);
+		availableNetIDs.push_back(netID);
 	}
 
 	//WARNING: it modifies the ecs global variable
@@ -253,33 +306,7 @@ public:
 		}
 		//server side
 		else {
-			std::lock_guard<std::mutex> lockServer(udpServer.entitiesMutex);
-		
-			//TODO: turn this into 3 methods :  addEntity removeEntity et updateEntity
-			for (int i = 0; i < players.v.size(); i++) {
-				//create new entity
-				MovingObject& player = ecs.getComponent<MovingObject>(players.v[i]);
-				if (i >= udpServer.netEntities.size()) {
-					udpServer.netEntities.emplace_back(i, 0, player.position.x, player.position.y,
-						player.newSpeed.x, player.newSpeed.y, static_cast<Uint8>(EntityType::PLAYER));
-				}
-				//update entity
-				else {
-					/*Uint16 id;
-					Uint8 version;
-					float x;
-					float y;
-					float vx;
-					float vy;
-					Uint8 type;*/
-					//udpServer.netEntities[i].version = 
-					//udpServer.netEntities[i].type = static_cast<Uint8>(EntityType::PLAYER);
-					udpServer.netEntities[i].x = player.position.x;
-					udpServer.netEntities[i].y = player.position.y;
-					udpServer.netEntities[i].vx = player.newSpeed.x;
-					udpServer.netEntities[i].vy = player.newSpeed.y;
-				}
-			}
+			udpServer.writeEntitiesToPacket(netIDs, localNetEntityIDs, localNetEntityVersions, localNetEntityTypes, ecs);
 		}
 	}
 
@@ -322,7 +349,7 @@ public:
 					chatWindow.messages.enqueue(new_message.playerName + ": " + new_message.message);
 					break;
 
-				case TcpMsgType::CONNECTION_REQUEST:
+				case TcpMsgType::CONNECTION_REQUEST: {
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					std::cout << "New UDP client: " << new_message.clientIp << " : " << new_message.udpPort;
 					udpServer.addClient(new_message.playerID, new_message.clientIp, new_message.udpPort);
@@ -336,8 +363,11 @@ public:
 
 					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, newEntity);
 					//TODO: convert newEntityID to network entity ID !!!
-					server.playerEntityCreated(new_message.playerID, /*NO!*/newEntity);
+					NetEntityID netEntityID = addNetEntity(newEntity, EntityType::PLAYER);
+					server.playerEntityCreated(new_message.playerID, netEntityID);
+
 					break;
+				}
 
 				case TcpMsgType::DISCONNECTION_REQUEST: {
 					std::cout << new_message.playerName << " s'est deconnecte." << std::endl;
@@ -347,11 +377,13 @@ public:
 						std::cerr << "\nPlayer ID not found, disconnection failed";
 						break;
 					}
-					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					PlayerInfos const& infos = playersInfos.Get(new_message.playerID);
 					removeAllComponents(infos.entity, EntityType::PLAYER);
 					desactivateAllComponents(infos.entity, EntityType::PLAYER);
 					ecs.removeEntity(infos.entity);
-					playersInfos.Remove(new_message.playerID);
+					removeNetEntity(infos.entity);
+
+					playersInfos.Remove(new_message.playerID);//after that point infos is not valid !
 					break;
 				}
 					
@@ -384,8 +416,8 @@ public:
 					std::cout << new_message.playerName << " s'est connecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est connecte.");
 					assert(!new_message.entityIDs.empty());
-					//TODO: convert network entity ID to local entity ID
-					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, /*No!*/new_message.entityIDs.at(0));
+					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, 0);
+					playersInfos.Get(new_message.playerID).netEntityId = new_message.entityIDs.at(0);
 					break;
 
 				case TcpMsgType::NEW_CHAT_MESSAGE: {
@@ -393,7 +425,7 @@ public:
 						std::cerr << "\nPlayer ID not found, receiving chat message failed";
 						break;
 					}
-					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					PlayerInfos const& infos = playersInfos.Get(new_message.playerID);
 					std::cout << infos.name << " : " << new_message.message << std::endl;
 					std::string pname{ infos.name };
 					std::transform(pname.begin(), pname.end(), pname.begin(), ::toupper);
@@ -406,7 +438,7 @@ public:
 						std::cerr << "\nPlayer ID not found, disconnection failed";
 						break;
 					}
-					PlayerInfos& infos = playersInfos.Get(new_message.playerID);
+					PlayerInfos const& infos = playersInfos.Get(new_message.playerID);
 					std::cout << infos.name << " s'est deconnecte." << std::endl;
 					chatWindow.messages.enqueue(new_message.playerName + " s'est deconnecte.");
 					playersInfos.Remove(new_message.playerID);
@@ -425,7 +457,8 @@ public:
 
 						//NEW: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
 						//===============================
-						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], new_message.entityIDs[i]);
+						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], 0);
+						playersInfos.Get(new_message.playerIDs[i]).netEntityId = new_message.entityIDs[i];
 					}
 					std::cout << "=================" << std::endl;
 					break;

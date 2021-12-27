@@ -6,6 +6,14 @@
 #include "Packing.h"
 #include "CRC.h"
 
+enum class EntityType : Uint8 {
+	PLAYER = 0,
+	PROJECTILE = 1,
+};
+
+//todo: generalize the use of this type
+using NetEntityID = Uint16;
+
 struct NetworkEntity
 {
 	Uint16 id;
@@ -30,8 +38,8 @@ protected:
 	std::atomic<bool> error{ false };//only udp network thread can modify it 
 	std::thread thread;
 	Uint16 myPort;
+
 public:
-	std::unique_lock<std::mutex> entitiesLock;
 	std::mutex entitiesMutex;
 
 	//The sequence number of the last packet received, used to check if what we received is more recent
@@ -39,9 +47,8 @@ public:
 	//The sequence number of the last packet sent
 	//Uint16 outgoingPacketNumber{ 0 };
 
-	std::vector<NetworkEntity> netEntities;
 	
-	UDPNetworkNode() : entitiesLock(entitiesMutex, std::defer_lock) {};
+	UDPNetworkNode() {};
 
 
 

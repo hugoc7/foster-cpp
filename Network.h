@@ -110,7 +110,7 @@ struct TCPmessage {
 				throw std::runtime_error("Received invalid TCP message (NEW_CONNECTION) : no player or entity ID");
 			playerID = SDLNet_Read16(buffer.get() + 4);
 			entityIDs.push_back(Packing::ReadUint16(&buffer.get()[6]));
-			playerName.assign(reinterpret_cast<const char*>(buffer.get()) + 6, bufferSize - 6u);
+			playerName.assign(reinterpret_cast<const char*>(buffer.get()) + 8, bufferSize - 8u);
 			break;
 		case TcpMsgType::NEW_DISCONNECTION:
 			if (bufferSize < 6)

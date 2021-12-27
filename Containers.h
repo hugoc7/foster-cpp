@@ -354,7 +354,8 @@ public:
 template <typename V, typename K = Uint16> 
 class ArrayMap {
 protected:
-	std::vector<int> index;
+	std::vector<int> index;//keys to indices
+	std::vector<K> keys;//indices to keys
 	std::vector<V> values;
 public:
 	static const int EMPTY = -1;
@@ -369,6 +370,7 @@ public:
 	void Add(K key, Args&& ... args) {
 		assert(0 <= key && key <= MAX_KEYS);//invalid key
 		values.emplace_back(std::forward<Args>(args)...);
+		keys.push_back(key);
 		if (index.size() <= key)
 			index.resize(key+1, ArrayMap::EMPTY);
 
@@ -387,6 +389,7 @@ public:
 
 		//add
 		values.emplace_back(std::forward<Args>(args)...);
+		keys.push_back(key);
 		if (index.size() <= key)
 			index.resize(key + 1, ArrayMap::EMPTY);
 
@@ -409,13 +412,27 @@ public:
 	//WARNING: if key is invalid or dont exist => undefined behaviour
 	void Remove(K key) {
 		assert(0 <= key && key < index.size());
-		removeFromVector(values, index[key]);
+		assert(keys.size() == values.size());
+		int indexToDelete = index[key];
+		assert(indexToDelete >= 0 && indexToDelete < values.size());
+
+		//if it's not the last element
+		if (indexToDelete < values.size() - 1) {
+			values[indexToDelete] = std::move(values.back());
+			keys[indexToDelete] = std::move(keys.back());
+			index[keys[indexToDelete]] = indexToDelete;
+		}
+		values.pop_back();
+		keys.pop_back();
 		index[key] = ArrayMap::EMPTY;
 	}
 	//WARNING: if key is invalid or dont exist => undefined behaviour
-	V& Get(K key) {
+	V const& Get(K key) const {
 		assert(0 <= key && key < index.size());
 		return values[index[key]];
+	}
+	V& Get(K key) {
+		return const_cast<V&>(static_cast<ArrayMap const*>(this)->Get(key));
 	}
 	void Clear() {
 		values.clear();

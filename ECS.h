@@ -106,7 +106,6 @@ public:
     template <typename T>
     void removeComponent(EntityID entity) {
 
-        //ajout du composant dans le vector des composants
         ComponentType compType = getComponentType<T>();
         assert(componentVectors[compType] != nullptr);
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
@@ -114,12 +113,18 @@ public:
         assert(entities[entity].components[compType] != NO_COMPONENT);
 
         ComponentID componentToDelete = entities[entity].components[compType];
-        removeFromVector(compVec, (int)componentToDelete);//replace the componentToDelete by the last component
-        removeFromVector(componentToEntity[compType], (int)componentToDelete);
+        assert(componentToDelete < compVec->size());
+        assert(componentToEntity[compType].size() == compVec->size());
 
-        //if we moved the last component
-        if (componentToDelete < compVec->size() - 1) {
-            assert(componentToEntity[compType].size() == compVec->size());
+        //if we delete the last component
+        if (componentToDelete == compVec->size() - 1) {
+            compVec->pop_back();
+            componentToEntity[compType].pop_back();
+        }
+        else{
+            removeFromVector(compVec, (int)componentToDelete);//replace the componentToDelete by the last component
+            removeFromVector(componentToEntity[compType], (int)componentToDelete);
+
             //now the entity of the replaced component has the good index to the component
             entities[componentToEntity[compType][componentToDelete]].components[compType] = componentToDelete;
         }
@@ -127,13 +132,18 @@ public:
         entities[entity].components[compType] = NO_COMPONENT;
     }
     template <typename T>
-    T& getComponent(EntityID entity) {
+    T const& getComponent(EntityID entity) const {
         ComponentType compType = getComponentType<T>();
         assert(componentVectors[compType] != nullptr, "This component does not exist.");
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
         assert(entity >= 0 && entity < entities.size(), "Bad entity ID.");
         assert(entities[entity].components[compType] != NO_COMPONENT, "This entity does not own this component.");
         return (*compVec)[entities[entity].components[compType]];
+    }
+    template <typename T>
+    T& getComponent(EntityID entity) {
+        ECS const* self = static_cast <ECS const*>(this);
+        return const_cast<T&>(self->getComponent<T>(entity));
     }
 
     ~ECS() {
@@ -162,7 +172,7 @@ private:
 
 
     template <typename T>
-    ComponentType getComponentType()
+    ComponentType getComponentType() const
     {
         static ComponentType const componentType = componentTypesCounter++;
         assert(componentType >= 0 && componentType < MAX_COMPONENTS);

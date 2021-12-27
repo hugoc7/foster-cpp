@@ -16,7 +16,9 @@ protected:
 	const int UDP_CLIENT_THREAD_DELAY{ 5 };
 	//moodycamel::ReaderWriterQueue<ActionKey> userInputs;
 
+
 public:
+	std::vector<NetworkEntity> netEntities;
 	std::atomic<Uint8> userInputs;
 	std::atomic<Uint8> lastUserInputs;
 
@@ -86,7 +88,7 @@ public:
 			return;
 		}
 		//const int packetVecLen = (packet.packet->len - headerSize) / netEntitySize;
-		entitiesLock.lock();
+		std::lock_guard<std::mutex> entitiesLock(entitiesMutex);
 		int currByte = 2;
 		NetworkEntity currEntity{};
 		netEntities.clear();
@@ -112,7 +114,6 @@ public:
 			/*std::cout << "Recv entity ("<< currEntity.id <<") : " << (int)currEntity.version << "; " << (int)currEntity.type
 				<< "; " << currEntity.vx << "; " << currEntity.vy << "\n";*/
 		}
-		entitiesLock.unlock();
 	}
 	
 	void loop() {

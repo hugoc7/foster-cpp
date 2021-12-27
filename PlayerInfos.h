@@ -3,11 +3,14 @@
 #include <string>
 #include "ECS.h"
 #include <atomic>
+#include "UDPNetwork.h"
 
 struct PlayerInfos {
+public:
 	std::string name;
 	Uint32 id;
-	EntityID entity;
+	EntityID entity;//used by server
+	NetEntityID netEntityId;//used by clients
 	Uint8 controls{0};
 
 
