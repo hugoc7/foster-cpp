@@ -91,6 +91,7 @@ public:
 	//TODO: put this 5 followinf fucntions in a class NetworkManager
 	//remove the components of an entity
 	void removeAllComponents(EntityID entity, EntityType type) {
+		std::cout << "\nremove components of entity " << entity;
 		if (type == EntityType::PLAYER) {
 			ecs.removeComponent<MovingObject>(entity);
 			ecs.removeComponent<BoxCollider>(entity);
@@ -98,18 +99,21 @@ public:
 	}
 	//desactivate the components of an entity
 	void desactivateAllComponents(EntityID entity, EntityType type) {
+		std::cout << "\ndesactivate entity " << entity;
 		if (type == EntityType::PLAYER) {
 			players.erase(entity);
 		}
 	}
 	//activate the components of an entity
 	void activateAllComponents(EntityID entity, EntityType type) {
+		std::cout << "\nactivate entity " << entity;
 		if (type == EntityType::PLAYER) {
 			players.insert(entity);
 		}
 	}
 	//add all components of an entity
 	void addAllComponents(EntityID entity, EntityType type, float x, float y, float vx, float vy) {
+		std::cout << "\nadd components to entity " << entity;
 		if (type == EntityType::PLAYER) {
 			ecs.addComponent<MovingObject>(entity, x, y, vx, vy);
 			ecs.addComponent<BoxCollider>(entity, charactersDimensions.x, charactersDimensions.y);
@@ -242,7 +246,7 @@ public:
 						//if the entity was desactivated in the ECS it should be activated
 						if (!isEntityActive[netID]) {
 							activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-							isEntityActive[i] = true;
+							isEntityActive[netID] = true;
 						}
 						updateAllComponents(localNetEntityIDs[netID], static_cast<EntityType>(packet[i].type), 
 							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
@@ -293,13 +297,15 @@ public:
 					netEntityDeleteCountDown[i] = netEntityDeleteDelay;
 					isEntityActive[i] = false;
 				}
-				else if (netEntityDeleteCountDown[i] > 0) {
+				//if the entity has been desactivated
+				else if (!isEntityActive[i] && netEntityDeleteCountDown[i] > 0) {
 					netEntityDeleteCountDown[i] -= std::lround(1000.0f * deltaTime);
 					//delete expired entity
 					if (netEntityDeleteCountDown[i] <= 0) {
 						netEntityDeleteCountDown[i] = 0;
 						removeAllComponents(localNetEntityIDs[i], localNetEntityTypes[i]);
 						ecs.removeEntity(localNetEntityIDs[i]);
+						std::cout << "\nremove entity " << localNetEntityIDs[i];
 					}
 				}
 			}

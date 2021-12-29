@@ -10,6 +10,7 @@
 #include <assert.h>
 #include "Containers.h"
 #include <functional>
+#include <algorithm>
 
 //Attention, l'Entity Component System est un singleton, il ne peut y en avoir qu'un !
 
@@ -71,7 +72,11 @@ public:
         //Solution 1 : naive
         //entities.erase(entities.begin()+entityID);
         //Solution 2 : "clever"
-        removedEntities.push_back(entityID);
+        assert(entityID >= 0 && entityID < entities.size());
+        if (entityID == entities.size() - 1)
+            entities.pop_back();
+        else
+            removedEntities.push_back(entityID);
     }
 
     //Component
@@ -133,6 +138,7 @@ public:
     }
     template <typename T>
     T const& getComponent(EntityID entity) const {
+        assert(std::find(removedEntities.begin(), removedEntities.end(), entity) == removedEntities.end());
         ComponentType compType = getComponentType<T>();
         assert(componentVectors[compType] != nullptr, "This component does not exist.");
         std::vector<T>* compVec = static_cast<std::vector<T>*>(componentVectors[compType]);
