@@ -18,6 +18,8 @@
 #include "UDPServer.h"
 #include <mutex>
 #include <cmath>
+#include "EntityManager.h"
+#include "NetEntityManager.h"
 
 
 
@@ -26,13 +28,13 @@ private:
 	int lastTime{ 0 }, currentTime{ 0 };
 	const float FPS{ 60.0 };
 	float deltaTime{}, refreshTimeInterval{ 1.0f / FPS};
-	ArrayList<EntityID> plateforms{};
-	ArrayList<EntityID> players{};
+	
 	Renderer renderingManager{};
 	Vector2 playerMaxSpeed{ 7.0f, 10.0f};
 	EntityID player;
 	Vector2 spawnPos{4.5, 7};
 	Vector2 charactersDimensions{1, 2};
+	EntityManager entityManager;
 
 	//Network
 	ArrayMap<PlayerInfos> playersInfos;
@@ -46,28 +48,12 @@ private:
 	UDPClient udpClient;
 	UDPServer udpServer;
 	std::vector<EntityID> localEntityIds;
-	//std::vector<std::pair<int, Uint8>> clientInputs;//first = player ID ; second = keyboard input
-	
-	//TODO: put all this in a class which manage networked entities !
-	//==================================================================
-	//std::vector<NetworkEntity> localNetEntities;
-	std::vector<bool> hasEntityBeenUpdated;
-	std::vector<bool> isEntityActive;
-	std::vector<int> netEntityDeleteCountDown;
-	std::vector<int> localNetEntityIDs;//networked entity ECS ids
-	std::vector<int> localNetEntityVersions;
-	std::vector<EntityType> localNetEntityTypes;
-	std::vector<int> availableNetIDs;//available networked entity netIDs
-	std::vector<int> netIDs;//networked entity netIDs
-	const int netEntityDeleteDelay = 10000;//10 sec
-	//==================================================================
-
-
+	ClientNetEntityManager clientNetEntityManager;
+	ServerNetEntityManager serverNetEntityManager;
 
 	//GUI
 	ScoreBoard scoreBoard;
 	ChatWindow chatWindow;
-
 
 
 public:
@@ -82,268 +68,36 @@ public:
 	{
 		if (isHost) {
 			player = ecs.addEntity();
-			ecs.addComponent<MovingObject>(player, 4.5, 7);
-			ecs.addComponent<BoxCollider>(player, 1, 2);
-			players.insert(player);
+			entityManager.addAllComponents(player, EntityType::PLAYER, spawnPos.x, spawnPos.y, 0, 0);
+			entityManager.activateAllComponents(player, EntityType::PLAYER);
 		}
-		readPlateformsFromFile("map.txt", plateforms);
+		readPlateformsFromFile("map.txt");
 	}
-	//TODO: put this 5 followinf fucntions in a class NetworkManager
-	//remove the components of an entity
-	void removeAllComponents(EntityID entity, EntityType type) {
-		std::cout << "\nremove components of entity " << entity;
-		if (type == EntityType::PLAYER) {
-			ecs.removeComponent<MovingObject>(entity);
-			ecs.removeComponent<BoxCollider>(entity);
-		}
-	}
-	//desactivate the components of an entity
-	void desactivateAllComponents(EntityID entity, EntityType type) {
-		std::cout << "\ndesactivate entity " << entity;
-		if (type == EntityType::PLAYER) {
-			players.erase(entity);
-		}
-	}
-	//activate the components of an entity
-	void activateAllComponents(EntityID entity, EntityType type) {
-		std::cout << "\nactivate entity " << entity;
-		if (type == EntityType::PLAYER) {
-			players.insert(entity);
-		}
-	}
-	//add all components of an entity
-	void addAllComponents(EntityID entity, EntityType type, float x, float y, float vx, float vy) {
-		std::cout << "\nadd components to entity " << entity;
-		if (type == EntityType::PLAYER) {
-			ecs.addComponent<MovingObject>(entity, x, y, vx, vy);
-			ecs.addComponent<BoxCollider>(entity, charactersDimensions.x, charactersDimensions.y);
-		}
-	}
-	//udate all components of an entity
-	void updateAllComponents(EntityID entity, EntityType type, float x, float y, float vx, float vy) {
-		if (type == EntityType::PLAYER) {
-			MovingObject& moveComp = ecs.getComponent<MovingObject>(entity);
-			moveComp.position.x = x;
-			moveComp.position.y = y;
-			moveComp.newSpeed.x = vx;
-			moveComp.newSpeed.y = vy;
-			moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
-		}
-	}
+	
 
-	//Used by server
-	//TODO: create a special class to manage all operations on networkd entities !
-	NetEntityID addNetEntity(EntityID entityID, EntityType type) {
-		assert(localNetEntityTypes.size() == localNetEntityVersions.size());
-		assert(localNetEntityIDs.size() == localNetEntityVersions.size());
-		assert(netIDs.size() <= localNetEntityVersions.size());
-
-		NetEntityID netID{};
-
-		//no netIDs availables, create a new netID
-		if (availableNetIDs.empty()) {
-			assert(netIDs.size() == localNetEntityVersions.size());
-			netID = localNetEntityIDs.size();
-
-			localNetEntityVersions.push_back(0);
-			localNetEntityTypes.push_back(type);
-			localNetEntityIDs.push_back(entityID);
-		}
-		else {
-			netID = availableNetIDs.back();
-			assert(netID < localNetEntityVersions.size() && netID >= 0);
-
-			availableNetIDs.pop_back();
-			localNetEntityTypes[netID] = type;
-			localNetEntityIDs[netID] = entityID;
-			if (localNetEntityVersions[netID] >= 255)
-				localNetEntityVersions[netID] = 0;
-			else
-				localNetEntityVersions[netID]++;
-		}
-		netIDs.push_back(netID);
-		return netID;
-	}
-	//Used by server
-	//TODO: create a special class to manage all operations on networkd entities !
-	void removeNetEntity(EntityID entityID) {
-		assert(localNetEntityTypes.size() == localNetEntityVersions.size());
-		assert(localNetEntityIDs.size() == localNetEntityVersions.size());
-		assert(netIDs.size() <= localNetEntityVersions.size());
-		
-		//find and remove netID (we can implement another system)
-		NetEntityID netID{0};
-		bool found{false};
-		for (int i = 0; i < netIDs.size(); i++) {
-			if (localNetEntityIDs.at(netIDs[i]) == entityID) {
-				netID = netIDs[i];
-				removeFromVector(netIDs, i);
-				found = true;
-				break;
-			}
-		}
-		assert(found);
-		availableNetIDs.push_back(netID);
-	}
-
-	//WARNING: it modifies the ecs global variable
-	void updateNetEntitiesPos(float deltaTime) {
-
-		//client side
-		if (!isHost) {
-			std::lock_guard<std::mutex> lockClient(udpClient.entitiesMutex);
-			std::vector<NetworkEntity> const& packet = udpClient.netEntities;
-
-			/*
-			//1-1 correspondance between packet array and localEntitiesID array
-			for (int i = 0; i < packet.size(); i++) {
-				//create new entity
-				if (i >= localEntityIds.size()) {
-					EntityID id = ecs.addEntity();
-					ecs.addComponent<MovingObject>(id, packet[i].x, packet[i].y);
-					ecs.getComponent<MovingObject>(id).newSpeed = Vector2(packet[i].vx, packet[i].vy);
-					ecs.addComponent<BoxCollider>(id, 1, 2);
-					players.insert(id);
-					localEntityIds.push_back(id);
-				}
-				//update entity
-				else {
-					MovingObject& moveComp = ecs.getComponent<MovingObject>(localEntityIds[i]);
-					moveComp.position.x = packet[i].x;
-					moveComp.position.y = packet[i].y;
-					moveComp.newSpeed.x = packet[i].vx;
-					moveComp.newSpeed.y = packet[i].vy;
-					moveComp.oldPosition = moveComp.position;//maybe useful ? I dont remember
-				}
-			}*/
-
-			std::fill(hasEntityBeenUpdated.begin(), hasEntityBeenUpdated.end(), false);
-
-			assert(localNetEntityVersions.size() == localNetEntityIDs.size());
-			assert(localNetEntityVersions.size() == hasEntityBeenUpdated.size());
-			assert(localNetEntityVersions.size() == isEntityActive.size());
-			assert(localNetEntityVersions.size() == netEntityDeleteCountDown.size());
-			assert(localNetEntityVersions.size() == localNetEntityTypes.size());
-
-			for (int i = 0; i < packet.size(); i++) {
-				int netID = packet[i].id;
-				//std::cout << i << ", " << netID << "\n";
-				if (netID < localNetEntityIDs.size()) {
-					//add a new entity
-					
-					if (!isEntityActive[netID] && netEntityDeleteCountDown[netID] == 0) {
-						localNetEntityIDs[netID] = ecs.addEntity();
-						isEntityActive[netID] = true;
-						localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
-						localNetEntityVersions[netID] = packet[i].version;
-
-						addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
-							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
-						activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-					}
-					//update existing entitys
-					else if (packet[i].version == localNetEntityVersions[netID]) {
-						//if the entity was desactivated in the ECS it should be activated
-						if (!isEntityActive[netID]) {
-							activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-							isEntityActive[netID] = true;
-						}
-						updateAllComponents(localNetEntityIDs[netID], static_cast<EntityType>(packet[i].type), 
-							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
-					}
-					//replace existing entity (delete and add)
-					else {
-						if (isEntityActive[netID]) {
-							desactivateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-						}
-						removeAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-
-						localNetEntityVersions[netID] = packet[i].version;
-						localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
-						isEntityActive[netID] = true;
-						addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
-							packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
-						activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-					}
-					hasEntityBeenUpdated[netID] = true;
-				}
-				//add new entity
-				else {
-					localNetEntityTypes.resize(netID + 1);
-					hasEntityBeenUpdated.resize(netID + 1, false);
-					localNetEntityIDs.resize(netID + 1);
-					localNetEntityVersions.resize(netID + 1);
-					isEntityActive.resize(netID + 1, false);
-					netEntityDeleteCountDown.resize(netID + 1, 0);
+	
 
 
-					localNetEntityIDs[netID] = ecs.addEntity();
-					hasEntityBeenUpdated[netID] = true;
-					isEntityActive[netID] = true;
-					localNetEntityTypes[netID] = static_cast<EntityType>(packet[i].type);
-					localNetEntityVersions[netID] = packet[i].version;
-
-					addAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID],
-						packet[i].x, packet[i].y, packet[i].vx, packet[i].vy);
-					activateAllComponents(localNetEntityIDs[netID], localNetEntityTypes[netID]);
-				}
-			}
-
-			
-			for (int i = 0; i < hasEntityBeenUpdated.size(); i++) {
-				//desactivate entities that are not in the packet
-				if (!hasEntityBeenUpdated[i] && isEntityActive[i]) {
-					desactivateAllComponents(localNetEntityIDs[i], localNetEntityTypes[i]);
-					netEntityDeleteCountDown[i] = netEntityDeleteDelay;
-					isEntityActive[i] = false;
-				}
-				//if the entity has been desactivated
-				else if (!isEntityActive[i] && netEntityDeleteCountDown[i] > 0) {
-					netEntityDeleteCountDown[i] -= std::lround(1000.0f * deltaTime);
-					//delete expired entity
-					if (netEntityDeleteCountDown[i] <= 0) {
-						netEntityDeleteCountDown[i] = 0;
-						removeAllComponents(localNetEntityIDs[i], localNetEntityTypes[i]);
-						ecs.removeEntity(localNetEntityIDs[i]);
-						std::cout << "\nremove entity " << localNetEntityIDs[i];
-					}
-				}
-			}
-		}
-		//server side
-		else {
-			udpServer.writeEntitiesToPacket(netIDs, localNetEntityIDs, localNetEntityVersions, localNetEntityTypes, ecs);
-		}
-	}
-
-
-	void readPlateformsFromFile(std::string const& filename, ArrayList<EntityID>& plateforms) {
+	void readPlateformsFromFile(std::string const& filename) {
 		std::ifstream file(filename);
 		float x, y, w, h;
 		while (!file.eof() && file.good()) {
 			file >> x >> y >> w >> h;
-			//std::cout << x << ", " << y << "  ;  " << w << ", " << h << std::endl;
-			EntityID plateform = ecs.addEntity();
-			ecs.addComponent<VisibleObject>(plateform, x, y);
-			ecs.addComponent<BoxCollider>(plateform, w, h);
-			plateforms.insert(plateform);
-			//plateforms.emplace_back(x, y);
-			//plateformColliders.emplace_back(w, h);
+			entityManager.addPlateform(x, y, w, h);
 		}
 	}
 
 	void handleNetwork(ChatWindow& chatWindow) {
-		//Show chat messages in the console
 		bool found{ false };
 		bool activity{ false };
 		EntityID newEntity;
+
+		//SERVER
 		if (isHost) {
-			//server.messages.lockQueue();
 			TCPmessage new_message;
-			while (server.messages.try_dequeue(new_message)){//!server.messages.empty()) {
+			while (server.messages.try_dequeue(new_message)){
 
 				activity = true;
-				//TCPmessage const& new_message{ server.messages.read(0) };
 				switch (new_message.type) {
 					//MESSAGE RECEIVED BY SERVER
 				case TcpMsgType::END_OF_THREAD:
@@ -363,13 +117,12 @@ public:
 					//create new entity for the player
 					newEntity = ecs.addEntity();
 					std::cout << new_message.playerName << " s'est connecte. Entite = " << newEntity << std::endl;
-					ecs.addComponent<MovingObject>(newEntity, spawnPos.x, spawnPos.y);
-					ecs.addComponent<BoxCollider>(newEntity, 1, 2);
-					players.insert(newEntity);
+					entityManager.addAllComponents(newEntity, EntityType::PLAYER, spawnPos.x, spawnPos.y, 0, 0);
+					entityManager.activateAllComponents(newEntity, EntityType::PLAYER);
 
 					playersInfos.Add(new_message.playerID, new_message.playerName, new_message.playerID, newEntity);
 					//TODO: convert newEntityID to network entity ID !!!
-					NetEntityID netEntityID = addNetEntity(newEntity, EntityType::PLAYER);
+					NetEntityID netEntityID = serverNetEntityManager.addNetEntity(newEntity, EntityType::PLAYER);
 					server.playerEntityCreated(new_message.playerID, netEntityID);
 
 					break;
@@ -384,10 +137,10 @@ public:
 						break;
 					}
 					PlayerInfos const& infos = playersInfos.Get(new_message.playerID);
-					removeAllComponents(infos.entity, EntityType::PLAYER);
-					desactivateAllComponents(infos.entity, EntityType::PLAYER);
+					entityManager.removeAllComponents(infos.entity, EntityType::PLAYER);
+					entityManager.desactivateAllComponents(infos.entity, EntityType::PLAYER);
 					ecs.removeEntity(infos.entity);
-					removeNetEntity(infos.entity);
+					serverNetEntityManager.removeNetEntity(infos.entity);
 
 					playersInfos.Remove(new_message.playerID);//after that point infos is not valid !
 					break;
@@ -398,10 +151,11 @@ public:
 					//TODO: handle this error in TCPclient and server !
 					break;
 				}
-				//server.messages.dequeue();
 			}
-			//.unlockQueue();
+			
 		}
+
+		//CLIENT
 		else {
 			TCPmessage new_message;
 			while (client.receivedMessages.try_dequeue(new_message)){
@@ -460,9 +214,6 @@ public:
 					for (int i = 0; i < new_message.playerIDs.size(); i++) {
 						std::cout << new_message.playerIDs[i] << " : " << new_message.playerNames[i] 
 							<< "(entite = "<< new_message.entityIDs[i] << ")" << std::endl;
-
-						//NEW: SEND ALL PLAYER'S ENTITY IDs IN PLAYER_LIST's PACKET !!!!
-						//===============================
 						playersInfos.Add(new_message.playerIDs[i], new_message.playerNames[i], new_message.playerIDs[i], 0);
 						playersInfos.Get(new_message.playerIDs[i]).netEntityId = new_message.entityIDs[i];
 					}
@@ -471,6 +222,7 @@ public:
 				}
 			}
 		}
+
 		if (activity) {
 			chatWindow.updateText();
 		}
@@ -494,24 +246,29 @@ public:
 			updateDeltaTime();
 
 			if (deltaTime >= refreshTimeInterval) {
-				handleNetwork(chatWindow);
+				handleNetwork(chatWindow);//handle tcp msg
 
-				updateNetEntitiesPos(deltaTime);
+				if (isHost) {
+					serverNetEntityManager.sendNetEntities(udpServer, deltaTime);
+				}
+				else {
+					clientNetEntityManager.updateNetEntities(udpClient, entityManager, deltaTime);
+				}
 
 				lastTime = currentTime;
 				handleInputs(quit, renderingManager, player, scoreBoard, chatWindow);
-				updateMovementBeforeCollision(players, deltaTime);
+				updateMovementBeforeCollision(deltaTime);
 
 				//sliding must be checked before collisions !
-				detectStaticSliding(players, plateforms);
-				detectStaticCollisions(players, plateforms);
+				detectStaticSliding(entityManager.players, entityManager.plateforms);
+				detectStaticCollisions(entityManager.players, entityManager.plateforms);
 
 				if (isHost) {
-					applyMovement(players, deltaTime);//also apply gravity
+					applyMovement(deltaTime);//also apply gravity
 				}
 
 
-				renderingManager.render(players, plateforms);
+				renderingManager.render(entityManager.players, entityManager.plateforms);
 				scoreBoard.render(playersInfos, myName);
 
 

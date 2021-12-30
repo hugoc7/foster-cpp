@@ -5,11 +5,8 @@
 #include "SDLNetCpp.h"
 #include "Packing.h"
 #include "CRC.h"
+#include "EntityManager.h"
 
-enum class EntityType : Uint8 {
-	PLAYER = 0,
-	PROJECTILE = 1,
-};
 
 //todo: generalize the use of this type
 using NetEntityID = Uint16;

@@ -152,6 +152,13 @@ public:
         return const_cast<T&>(self->getComponent<T>(entity));
     }
 
+    template <typename T>
+    std::vector<T>& getComponentVector() {
+        ComponentType compType = getComponentType<T>();
+        assert(componentVectors[compType] != nullptr && "This component does not exist.");
+        return *static_cast<std::vector<T>*>(componentVectors[compType]);
+    }
+
     ~ECS() {
         for (int i = 0; i < vectorDestructors.size(); i++) {
             vectorDestructors[i](this);

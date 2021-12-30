@@ -5,15 +5,17 @@
 
 const float Gravity = 15.0f;
 
-void applyMovement(ArrayList<EntityID> const& objects, float deltaTime) {
-	for (int i = 0; i < objects.v.size(); i++) {
-		applyMovement(ecs.getComponent<MovingObject>(objects.v[i]), deltaTime);
+void applyMovement(float deltaTime) {
+	std::vector<MovingObject>& objects = ecs.getComponentVector<MovingObject>();
+	for (int i = 0; i < objects.size(); i++) {
+		applyMovement(objects[i], deltaTime);
 	}
 }
 
-void updateMovementBeforeCollision(ArrayList<EntityID> const& objects, float deltaTime) {
-	for (int i = 0; i < objects.v.size(); i++) {
-		updateMovementBeforeCollision(ecs.getComponent<MovingObject>(objects.v[i]), deltaTime);
+void updateMovementBeforeCollision(float deltaTime) {
+	std::vector<MovingObject>& objects = ecs.getComponentVector<MovingObject>();
+	for (int i = 0; i < objects.size(); i++) {
+		updateMovementBeforeCollision(objects[i], deltaTime);
 	}
 
 }
