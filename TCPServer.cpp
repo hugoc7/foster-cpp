@@ -3,8 +3,7 @@
 void TCPServer::closeConnection(int clientID) {
 	Uint16 playerID{ connections[clientID].playerID };
 	if (connections[clientID].connectedToGame) {
-		messages.emplace(TcpMsgType::DISCONNECTION_REQUEST,
-			std::move(connections[clientID].playerName), connections[clientID].playerID);
+		messages.emplace(std::make_unique<DisconnectionRequest>(std::move(connections[clientID].playerName), connections[clientID].playerID));
 		connections[clientID].connectedToGame = false;//useless ?
 		releasePlayerID(connections[clientID].playerID);
 	}
@@ -23,19 +22,20 @@ void TCPServer::receiveMessagesFromClients() {
 				connections[clientID].bytesReceived = 0;
 
 				//interpret the buffer content to create a msg object
-				TCPmessage newMessage(getRecvBuffer(connections[clientID].recvBufferIndex), connections[clientID].packetSize);
+				std::unique_ptr<TCPMessage> newMessage = TCPMessage::ReadFromBuffer(getRecvBuffer(connections[clientID].recvBufferIndex), connections[clientID].packetSize);
 
 				releaseRecvBuffer(connections[clientID]);
 
 
-				switch (newMessage.type) {
+				switch (newMessage.get()->type) {
 					//if client request disconnection
 				case TcpMsgType::DISCONNECTION_REQUEST: {
+					DisconnectionRequest* disconnectionMsg = static_cast<DisconnectionRequest*>(newMessage.get());
 
 					//player name is moved because the client struct will be destroyed
-					newMessage.playerName = std::move(connections[clientID].playerName);
+					disconnectionMsg->playerName = std::move(connections[clientID].playerName);
 					assert(connections[clientID].playerID >= 0);
-					newMessage.playerID = connections[clientID].playerID;
+					disconnectionMsg->playerID = connections[clientID].playerID;
 					connections[clientID].connectedToGame = false;
 
 					releasePlayerID(connections[clientID].playerID);
@@ -51,8 +51,8 @@ void TCPServer::receiveMessagesFromClients() {
 						closeConnection(clientID);//TODO: pb here
 						continue;
 					}*/
-
-					connections[clientID].playerName = newMessage.playerName;
+					ConnectionRequest* connectionMsg = static_cast<ConnectionRequest*>(newMessage.get());
+					connections[clientID].playerName = connectionMsg->playerName;
 					connections[clientID].connectedToGame = true;
 					Uint16 playerID = getNewPlayerID();
 					connections[clientID].playerID = playerID;
@@ -60,19 +60,21 @@ void TCPServer::receiveMessagesFromClients() {
 					assert(playerID < playerIdToConnectionIndex.size());
 					playerIdToConnectionIndex[playerID] = clientID;
 
-					newMessage.playerID = playerID;
-					newMessage.clientIp = std::move(connections[clientID].tcpSocket.getPeerIP());
+					connectionMsg->playerID = playerID;
+					connectionMsg->clientIp = std::move(connections[clientID].tcpSocket.getPeerIP());
 					messages.enqueue(std::move(newMessage));
 					break;
 				}
 
-				case TcpMsgType::SEND_CHAT_MESSAGE:
-					newMessage.playerName = connections[clientID].playerName;
+				case TcpMsgType::SEND_CHAT_MESSAGE: {
+					SendChatMsg* chatMsg = static_cast<SendChatMsg*>(newMessage.get());
+					chatMsg->playerName = connections[clientID].playerName;
 					assert(connections[clientID].playerID >= 0);
-					newMessage.playerID = connections[clientID].playerID;
-					sendChatMessage(newMessage.message, newMessage.playerID);
+					chatMsg->playerID = connections[clientID].playerID;
+					sendChatMessage(chatMsg->message, chatMsg->playerID);
 					messages.enqueue(std::move(newMessage));
-					break;
+					break; 
+				}
 				case TcpMsgType::STILL_ALIVE:
 					//nothing
 					break;
@@ -144,7 +146,8 @@ void TCPServer::loop() {
 	}
 	catch (std::exception const& e) {
 		std::cerr << "\nException in server thread: " << e.what() << std::endl;
-		messages.emplace(TcpMsgType::END_OF_THREAD, std::string("Exception: ") + e.what());
+		messages.emplace(std::make_unique<EndOfThread>(std::string("Exception: ") + e.what()));
+
 		stopReason = e.what();
 	}
 	
@@ -171,7 +174,6 @@ void TCPServer::stop() {
 
 	socketSet.delSocket(listeningTcpSock);
 	listeningTcpSock.close();
-	//SDLNet_FreeSocketSet(socketSet);
 }
 
 

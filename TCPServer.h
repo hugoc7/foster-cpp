@@ -15,11 +15,17 @@
 #include "SDLNetCpp.h"
 #include "PlayerInfos.h"
 #include <memory>
+#include "TCPConnection.h"
+#include "TCPMessage.h"
+
+enum class MsgFromGameType : Uint8 {
+	PLAYER_ENTITY_CREATED = 0
+};
 
 //Structs used to share information from game to TCP server thread
 class MsgFromGame {
 public:
-	virtual char type() const noexcept = 0;
+	virtual MsgFromGameType type() const noexcept = 0;
 	virtual ~MsgFromGame() = default;//IMPORTANT!
 };
 class PlayerEntityCreated : public MsgFromGame {
@@ -27,8 +33,8 @@ public:
 	Uint16 entityID;
 	Uint16 playerID;
 
-	virtual char type() const noexcept override {
-		return 0;//TODO: use an enum instead!
+	virtual MsgFromGameType type() const noexcept override {
+		return MsgFromGameType::PLAYER_ENTITY_CREATED;
 	}
 
 	PlayerEntityCreated(Uint16 playerId, Uint16 entityId) :
@@ -37,28 +43,10 @@ public:
 	{}
 };
 
-
-struct ClientConnection : TCPConnection {
-	std::string playerName;
-	bool connectedToGame{ false };//a client is "connected to game" from a new player request until a disconnection request  
-	Uint16 playerID{};
-	Uint16 entityID{};
-
-
-	ClientConnection(TCPsocketObject&& tcpSocket, SocketSetObject& socketSet) : 
-		TCPConnection(std::move(tcpSocket), socketSet) 
-	{
-	}
-
-	ClientConnection(ClientConnection&& other) = default;
-	ClientConnection& operator=(ClientConnection&& other) = default;
-};
-
-
 class TCPServer : TCPNetworkNode {
 	
 public:
-	moodycamel::ReaderWriterQueue<TCPmessage> messages;
+	moodycamel::ReaderWriterQueue<std::unique_ptr<TCPMessage>> messages;
 	void stop();
 	void start(Uint16 port, Uint16 udpPort);
 	
@@ -75,7 +63,7 @@ private:
 		std::unique_ptr<MsgFromGame> new_message;
 		while (messagesFromGame.try_dequeue(new_message)) {
 			switch (new_message.get()->type()) {
-			case 0://todo: use a enum
+			case MsgFromGameType::PLAYER_ENTITY_CREATED:
 			{
 				PlayerEntityCreated* msg = static_cast<PlayerEntityCreated*>(new_message.get());
 				assert(msg->playerID < playerIdToConnectionIndex.size());
@@ -98,32 +86,13 @@ private:
 
 	//tell a client that he will be disconnected
 	void sendGoodbye(ClientConnection& client, std::string const& reason) {
-		Uint16 size = 4 + reason.size();
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::GOODBYE, sendingBuffer.get() + 2);
-		std::memcpy(sendingBuffer.get() + 4, reason.c_str(), reason.size());
+		Uint16 size = Goodbye::writeToBuffer(sendingBuffer, reason);
 		sendPacket(client, size);
 	}
 
 	//send to all a new connection msg
 	void sendNewPlayerNotification(ClientConnection const& newClient) {
-		Uint16 size = newClient.playerName.size() + 4 + 2 + 2;
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_CONNECTION, sendingBuffer.get() + 2);
-		SDLNet_Write16((Uint16)newClient.playerID, sendingBuffer.get() + 4);
-
-		Packing::WriteUint16(newClient.entityID, &sendingBuffer.get()[6]);
-
-		std::memcpy(sendingBuffer.get() + 8, newClient.playerName.c_str(), newClient.playerName.size());
-
-		//for each client
+		Uint16 size = NewConnection::writeToBuffer(sendingBuffer, newClient.playerName, newClient.playerID, newClient.entityID);
 		for (int i = 0; i < connections.size(); i++) {
 			if (connections[i].playerID != newClient.playerID)
 				sendPacket(connections[i], size);
@@ -131,67 +100,21 @@ private:
 	}
 
 	void sendChatMessage(std::string const& message, Uint16 senderPlayerID) {
-		Uint16 size = message.size() + 4 + 2;
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_CHAT_MESSAGE, sendingBuffer.get() + 2);
-		SDLNet_Write16((Uint16)senderPlayerID, sendingBuffer.get() + 4);
-		std::memcpy(sendingBuffer.get() + 6, message.c_str(), message.size());
-
-		//for each client
+		Uint16 size = NewChatMsg::writeToBuffer(sendingBuffer, message, senderPlayerID);
 		for (int i = 0; i < connections.size(); i++) {
 			sendPacket(connections[i], size);
 		}
 	}
 
 	void sendPlayerList(ClientConnection& newClient) {
-
-		//PACKET SCHEMA (unit = byte)
-		//packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + nameSize(1) + name(n) ) 
-		//TODO: packetSize(2) + type(2) + udpPort(2) + Nplayers * ( playerId(2) + playerEntityId(2) + nameSize(1) + name(n) ) 
-
-		Uint16 size{ 6 };
-		unsigned int currentByteIndex{ 6 };
-		for (int i = 0; i < connections.size(); i++) {
-			size += 1 + 2 + 2 + connections[i].playerName.size();
-		}
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::PLAYER_LIST, sendingBuffer.get() + 2);
-		SDLNet_Write16(udpServerPort, sendingBuffer.get() + 4);
-		//std::unique_lock<std::mutex> playerInfosLock(playerInfosMutex, std::defer_lock);
-		for (int i = 0; i < connections.size(); i++) {
-			SDLNet_Write16((Uint16)connections[i].playerID, sendingBuffer.get() + currentByteIndex);
-			currentByteIndex += 2;
-
-			Packing::WriteUint16(connections[i].entityID, &sendingBuffer.get()[currentByteIndex]);
-			currentByteIndex += 2;
-
-			assert(connections[i].playerName.size() <= 255);
-			sendingBuffer.get()[currentByteIndex] = static_cast<Uint8>(connections[i].playerName.size());
-			currentByteIndex += 1;
-			std::memcpy(sendingBuffer.get() + currentByteIndex, connections[i].playerName.c_str(), connections[i].playerName.size());
-			currentByteIndex += connections[i].playerName.size();
-		}
+		Uint16 size = PlayerList::writeToBuffer(sendingBuffer, udpServerPort, connections);
 		sendPacket(newClient, size);
 	}
 
 	//send to all a new disconnection msg
 	//TODO: corriger le pb de gestion des exceptions lors de l'envoi de notifications aux autres clients
 	void sendPlayerDisconnectionNotification(Uint16 disconnectedPlayerID) {
-		const Uint16 size{ 6 };
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::NEW_DISCONNECTION, sendingBuffer.get() + 2);
-		SDLNet_Write16(disconnectedPlayerID, sendingBuffer.get() + 4);
+		const Uint16 size = NewDisconnection::writeToBuffer(sendingBuffer, disconnectedPlayerID);
 
 		//for each client
 		for (int i = 0; i < connections.size(); i++) {
@@ -199,17 +122,29 @@ private:
 		}
 	}
 
-	void closeConnection(int clientID);
+	//WIP, meant to replace "sendPlayerDisconnectionNotification"
+	void notifyPlayerDisconnections() {
+		while (!disconnectedPlayersIDToNotify.empty()) {
+			Uint16 playerID = disconnectedPlayersIDToNotify.back();
+			disconnectedPlayersIDToNotify.pop_back();
+			const Uint16 packetSize = NewDisconnection::writeToBuffer(sendingBuffer, playerID);
 
-	//UNUSED ! 
-	//generate a unique player ID (different from clientID which is an index in a client vector)
-	Uint16 generatePlayerID() {
-		static Uint16 counter = 0;
-		if(counter+1u == 65535u) {
-			return (counter = 0);
+			//for each client
+			for (int i = 0; i < connections.size(); i++) {
+				//TODO: implement a noexcept try_sendPacket method which return false on error
+				try {
+					sendPacket(connections[i], packetSize);
+				}
+				catch (std::exception& e) {
+					closeConnection(i);//TODO: modify it
+					disconnectedPlayersIDToNotify.push_back(connections[i].playerID);
+				}
+
+			}
 		}
-		return counter++;
 	}
+
+	void closeConnection(int clientID);
 
 	Uint16 getNewPlayerID() {
 		assert(!availablePlayerIDs.empty());
@@ -229,6 +164,7 @@ private:
 	std::atomic<bool> serverRunning{ false };
 	TCPsocketObject listeningTcpSock;
 	Uint16 udpServerPort;
+	std::vector<Uint16> disconnectedPlayersIDToNotify;//ids of disconnected players to notify to others
 
 	const int MAX_CLIENTS = 10;
 	int connectedClients = 0;//number of connected clients

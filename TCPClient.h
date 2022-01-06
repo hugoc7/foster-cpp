@@ -7,13 +7,13 @@
 #include "Containers.h"
 #include "TCPNetworkNode.h"
 #include "SDLNetCpp.h"
-
+#include "TCPMessage.h"
 
 
 class TCPClient : TCPNetworkNode {
 public:
-	moodycamel::ReaderWriterQueue<TCPmessage> receivedMessages;
-	moodycamel::ReaderWriterQueue<TCPmessage> messagesToSend;
+	moodycamel::ReaderWriterQueue<std::unique_ptr<TCPMessage>> receivedMessages;
+	moodycamel::ReaderWriterQueue<std::string> messagesToSend;
 	std::atomic<bool> clientRunning{ false };
 
 	TCPClient() : TCPNetworkNode(), receivedMessages(MAX_MESSAGES) {
@@ -39,7 +39,7 @@ public:
 	}
 
 	void sendChatMsg(std::string&& text) {
-		messagesToSend.emplace(TcpMsgType::SEND_CHAT_MESSAGE, std::move(text));
+		messagesToSend.emplace(std::move(text));
 	}
 
 
@@ -80,43 +80,25 @@ protected:
 	void receiveMsg() {
 			if (receivePacket(connectionToServer)) {
 				//interpret the buffer content to create a msg object
-				TCPmessage newMessage(getRecvBuffer(connectionToServer.recvBufferIndex), connectionToServer.packetSize);
-				if (newMessage.type != TcpMsgType::STILL_ALIVE)
+				std::unique_ptr<TCPMessage> newMessage = TCPMessage::ReadFromBuffer(getRecvBuffer(connectionToServer.recvBufferIndex), connectionToServer.packetSize);
+				if (newMessage.get()->type != TcpMsgType::STILL_ALIVE)
 					receivedMessages.enqueue(std::move(newMessage));
 			}
 	}
 	
 
 	void sendDisconnectRequest() {
-		assert(sendingBuffer.Size() >= 4);
-		SDLNet_Write16((Uint16)4, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::DISCONNECTION_REQUEST, sendingBuffer.get() + 2);
+		DisconnectionRequest::writeToBuffer(sendingBuffer);
 		sendPacket(connectionToServer, 4);
 	}
 
 	void sendConnectionRequest(Uint16 udpPort) {
-
-		Uint16 size = playerName.size() + 6;
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::CONNECTION_REQUEST, sendingBuffer.get() + 2);
-		Packing::WriteUint16(udpPort, &sendingBuffer.get()[4]);
-		std::memcpy(sendingBuffer.get() + 6, playerName.c_str(), playerName.size());
+		Uint16 size = ConnectionRequest::writeToBuffer(sendingBuffer, udpPort, playerName);
 		sendPacket(connectionToServer, size);
 	}
 
 	void sendChatMessage(std::string const& message) {
-		Uint16 size = message.size() + 4;
-		assert(size <= MAX_16_BIT_VALUE && size <= MAX_TCP_PACKET_SIZE);
-		if (sendingBuffer.Size() < size) {
-			sendingBuffer.lossfulRealloc(size);
-		}
-		SDLNet_Write16((Uint16)size, sendingBuffer.get());
-		SDLNet_Write16((Uint16)TcpMsgType::SEND_CHAT_MESSAGE, sendingBuffer.get() + 2);
-		std::memcpy(sendingBuffer.get() + 4, message.c_str(), message.size());
+		Uint16 size = SendChatMsg::writeToBuffer(sendingBuffer, message);
 		sendPacket(connectionToServer, size);
 	}
 
@@ -126,9 +108,8 @@ protected:
 			sendConnectionRequest(udpPort);
 			isConnected = true;
 
-			TCPmessage msgToSend{};
+			std::string msgToSend{};
 
-			//TODO: the thread should be joinable so if the loop end, just send a message to the main thread and wait
 			while (clientRunning && isRemoteAlive(connectionToServer)) {
 				//here we sleep a bit in select syscall (10ms ?) to avoid crazy CPU usage
 				checkSockets(TCP_SLEEP_DURATION);
@@ -136,18 +117,18 @@ protected:
 
 				//TODO: here if we sleep (block thread) for 1 sec it crashes ... why ?
 				if (messagesToSend.try_dequeue(msgToSend)) {
-					sendChatMessage(msgToSend.message);
+					sendChatMessage(msgToSend);
 				}
 
 				keepConnectionAlive(connectionToServer);
 			}
 
 			if (!isRemoteAlive(connectionToServer))
-				receivedMessages.emplace(TcpMsgType::END_OF_THREAD, "The remote host is not alive (timeout expired).");
+				receivedMessages.enqueue(std::make_unique<EndOfThread>("The remote host is not alive (timeout expired)."));
 		}
 		catch (std::exception const& e) {
 			std::cerr << e.what() << std::endl;
-			receivedMessages.emplace(TcpMsgType::END_OF_THREAD, std::string("Exception: ") + e.what());
+			receivedMessages.emplace(std::make_unique<EndOfThread>(std::string("Exception: ") + e.what()));
 		}
 		try {
 			closeConnection();
