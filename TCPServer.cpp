@@ -10,7 +10,7 @@ void TCPServer::closeConnection(int clientID) {
 	try_releaseRecvBuffer(connections[clientID]);
 	connections[clientID].close(socketSet);//close the socket
 	removeFromVector(connections, clientID);
-	sendPlayerDisconnectionNotification(playerID);//ici pb à gérer!!!
+	disconnectedPlayersIDToNotify.push_back(playerID);
 }
 
 ///@brief receive TCP messages from all clients (non blocking)
@@ -89,9 +89,6 @@ void TCPServer::receiveMessagesFromClients() {
 			}
 			catch(...){}
 
-			//TODO: ici on a un probleme si une exception survient lors de l'envoi d'une notification
-			//à un autre client (dans closeConnection), il faudrait pouvoir fermer la connexion recursivement
-			//gros dossier ....
 			closeConnection(clientID);
 		}
 	}
@@ -132,6 +129,7 @@ void TCPServer::loop() {
 
 			handleMessagesFromGame();//is it the good place ?
 
+			sendDisconnectionsNotifications();
 
 			for (int i = 0; i < connections.size(); i++) {
 				//disconnect client when timeout is expired

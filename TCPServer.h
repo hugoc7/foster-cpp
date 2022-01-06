@@ -111,19 +111,7 @@ private:
 		sendPacket(newClient, size);
 	}
 
-	//send to all a new disconnection msg
-	//TODO: corriger le pb de gestion des exceptions lors de l'envoi de notifications aux autres clients
-	void sendPlayerDisconnectionNotification(Uint16 disconnectedPlayerID) {
-		const Uint16 size = NewDisconnection::writeToBuffer(sendingBuffer, disconnectedPlayerID);
-
-		//for each client
-		for (int i = 0; i < connections.size(); i++) {
-			sendPacket(connections[i], size);
-		}
-	}
-
-	//WIP, meant to replace "sendPlayerDisconnectionNotification"
-	void notifyPlayerDisconnections() {
+	void sendDisconnectionsNotifications() {
 		while (!disconnectedPlayersIDToNotify.empty()) {
 			Uint16 playerID = disconnectedPlayersIDToNotify.back();
 			disconnectedPlayersIDToNotify.pop_back();
@@ -131,13 +119,11 @@ private:
 
 			//for each client
 			for (int i = 0; i < connections.size(); i++) {
-				//TODO: implement a noexcept try_sendPacket method which return false on error
 				try {
 					sendPacket(connections[i], packetSize);
 				}
 				catch (std::exception& e) {
-					closeConnection(i);//TODO: modify it
-					disconnectedPlayersIDToNotify.push_back(connections[i].playerID);
+					closeConnection(i);
 				}
 
 			}
