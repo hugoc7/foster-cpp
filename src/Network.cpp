@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Network.h"
+#include <Network/Network.h>
 
 std::string getIpAdressAsString(Uint32 ip) {
 	unsigned char parts[4];

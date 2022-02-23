@@ -1,6 +1,6 @@
-#include "Components.h"
+#include <Components.h>
 #include <vector>
-#include "Move.h"
+#include <Move.h>
 #include <iostream>
 
 const float Gravity = 15.0f;

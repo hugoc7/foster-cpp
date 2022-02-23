@@ -8,7 +8,7 @@
 #include "Rendering.h"
 #include "PlayerInfos.h"
 #include "Containers.h"
-#include "Network.h"
+#include <Network/Network.h>
 #include "InputBar.h"
 
 #define MAX_CHAT_MESSAGES 30

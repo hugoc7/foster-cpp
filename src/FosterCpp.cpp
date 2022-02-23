@@ -1,21 +1,21 @@
 
 #include <iostream>
-#include "SDL.h"
-#include "Collisions.h"
-#include "Geometry.h"
+#include <SDL.h>
+#include <Collisions.h>
+#include <Geometry.h>
 #include <iostream>
-#include "ECS.h"
-#include "Game.h"
-#include "Components.h"
-#include "SDL_net.h"
-#include "TCPServer.h"
-#include "TCPClient.h"
+#include <ECS.h>
+#include <Game.h>
+#include <Components.h>
+#include <SDL_net.h>
+#include <Network/TCPServer.h>
+#include <Network/TCPClient.h>
 #include <map>
 #include <thread>
-#include "Containers.h"
-#include "UDPServer.h"
-#include "UDPClient.h"
-#include "struct/struct.h"
+#include <Containers.h>
+#include <Network/UDPServer.h>
+#include <Network/UDPClient.h>
+#include <struct/struct.h>
 
 /*
 struct Velocity {

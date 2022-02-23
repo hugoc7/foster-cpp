@@ -1,4 +1,4 @@
-#include "TCPMessage.h"
+#include <Network/TCPMessage.h>
 
 std::unique_ptr<TCPMessage> TCPMessage::ReadFromBuffer(UniqueByteBuffer const& buffer, int bufferSize) {
 

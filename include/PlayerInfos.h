@@ -3,7 +3,7 @@
 #include <string>
 #include "ECS.h"
 #include <atomic>
-#include "UDPNetwork.h"
+#include <Network/UDPNetwork.h>
 
 struct PlayerInfos {
 public:

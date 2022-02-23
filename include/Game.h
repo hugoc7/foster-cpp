@@ -8,18 +8,18 @@
 #include "SDL_events.h"
 #include "Rendering.h"
 #include <fstream>
-#include "TCPServer.h"
-#include "ScoreBoard.h"
-#include "TCPClient.h"
+#include <Network/TCPServer.h>
+#include <GUI/ScoreBoard.h>
+#include <Network/TCPClient.h>
 #include <iostream>
-#include "ChatWindow.h"
+#include <GUI/ChatWindow.h>
 #include <algorithm>
-#include "UDPClient.h"
-#include "UDPServer.h"
+#include <Network/UDPClient.h>
+#include <Network/UDPServer.h>
 #include <mutex>
 #include <cmath>
 #include "EntityManager.h"
-#include "NetEntityManager.h"
+#include <Network/NetEntityManager.h>
 
 
 

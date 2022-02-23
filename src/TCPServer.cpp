@@ -1,4 +1,4 @@
-#include "TCPServer.h"
+#include <Network/TCPServer.h>
 
 void TCPServer::closeConnection(int clientID) {
 	Uint16 playerID{ connections[clientID].playerID };
