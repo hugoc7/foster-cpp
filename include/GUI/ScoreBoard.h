@@ -28,13 +28,13 @@ public:
 
 	ScoreBoard(Renderer& renderer) : renderer{ renderer } {
 		font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "assets/fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
 	}
 
 	void reloadFont() {
 		FC_ClearFont(font);
 		//font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "assets/fonts/Sansation_Regular.ttf", 30, FC_MakeColor(255, 0, 255, 255), TTF_STYLE_NORMAL);
 	}
 	void handleEvents(SDL_Event const& event) {
 		const Uint8* state = SDL_GetKeyboardState(NULL);

@@ -34,13 +34,13 @@ public:
 
 	ChatWindow(Renderer& renderer) : renderer{ renderer }, inputBar{ renderer } {
 		font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "assets/fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
 	}
 
 	void reloadFont() {
 		FC_ClearFont(font);
 		//font = FC_CreateFont();
-		int r = FC_LoadFont(font, renderer.renderer, "fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
+		int r = FC_LoadFont(font, renderer.renderer, "assets/fonts/Sansation_Regular.ttf", txtSize, txtColor, TTF_STYLE_NORMAL);
 		inputBar.reloadFont();
 	}
 

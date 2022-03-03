@@ -1,5 +1,11 @@
 Debug/
 x64/
+.vscode/
+.xmake/
+vsxmake2019/
+build/
+assets/
+bin/
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user

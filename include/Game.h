@@ -71,7 +71,7 @@ public:
 			entityManager.addAllComponents(player, EntityType::PLAYER, spawnPos.x, spawnPos.y, 0, 0);
 			entityManager.activateAllComponents(player, EntityType::PLAYER);
 		}
-		readPlateformsFromFile("map.txt");
+		readPlateformsFromFile("assets/maps/map.txt");
 	}
 	
 

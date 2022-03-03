@@ -62,8 +62,8 @@ public:
         win = SDL_CreateWindow("Foster Test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_w, window_h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-        surfaces[PLAYER_TEX] = SDL_LoadBMP("img/player.bmp");
-        surfaces[WALL_TEX] = SDL_LoadBMP("img/hello.bmp");
+        surfaces[PLAYER_TEX] = SDL_LoadBMP("assets/img/player.bmp");
+        surfaces[WALL_TEX] = SDL_LoadBMP("assets/img/plateform.bmp");
 
         for (int i = 0; i < MAX_TEXTURES; i++) {
             textures[i] = SDL_CreateTextureFromSurface(renderer, surfaces[i]);
